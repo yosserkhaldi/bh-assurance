@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  VIEWER
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+
+  @@map("user_status")
+}
+
+enum Governorate {
+  ARIANA
+  BEJA
+  BEN_AROUS
+  BIZERTE
+  GABES
+  GAFSA
+  JENDOUBA
+  KAIROUAN
+  KASSERINE
+  KEBILI
+  KEF
+  MAHDIA
+  MANOUBA
+  MEDENINE
+  MONASTIR
+  NABEUL
+  SFAX
+  SIDI_BOUZID
+  SILIANA
+  SOUSSE
+  TATAOUINE
+  TOZEUR
+  TUNIS
+  ZAGHOUAN
+
+  @@map("governorate")
+}
+
+enum ContractType {
+  FLEET
+  INDIVIDUAL
+  TEMPORARY
+  OTHER
+
+  @@map("contract_type")
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+  CANCELLED
+  RENEWED
+
+  @@map("contract_status")
+}
+
+enum VehicleType {
+  CAR
+  VAN
+  TRUCK
+  BUS
+  MOTORCYCLE
+  SPECIAL
+  OTHER
+
+  @@map("vehicle_type")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique @db.VarChar(255)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  firstName    String     @map("first_name") @db.VarChar(100)
+  lastName     String     @map("last_name") @db.VarChar(100)
+  role         UserRole   @default(VIEWER)
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz(3)
+
+  sessions              AuthSession[]
+  establishmentsCreated Establishment[] @relation("EstablishmentCreatedBy")
+  establishmentsUpdated Establishment[] @relation("EstablishmentUpdatedBy")
+  contractsCreated      Contract[]      @relation("ContractCreatedBy")
+  contractsUpdated      Contract[]      @relation("ContractUpdatedBy")
+  vehiclesCreated       Vehicle[]       @relation("VehicleCreatedBy")
+  vehiclesUpdated       Vehicle[]       @relation("VehicleUpdatedBy")
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+
+  @@index([lastName, firstName])
+  @@index([role, status])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash") @db.VarChar(255)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, revokedAt])
+  @@map("auth_sessions")
+}
+
+model Establishment {
+  id           String      @id @default(uuid()) @db.Uuid
+  businessName String      @map("business_name") @db.VarChar(200)
+  rne          String      @unique @db.VarChar(50)
+  address      String      @db.VarChar(500)
+  governorate  Governorate
+  managerName  String      @map("manager_name") @db.VarChar(200)
+  phone        String      @db.VarChar(30)
+  email        String      @db.VarChar(255)
+  createdById  String?     @map("created_by_id") @db.Uuid
+  updatedById  String?     @map("updated_by_id") @db.Uuid
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt    DateTime?   @map("deleted_at") @db.Timestamptz(3)
+
+  contracts Contract[]
+  createdBy User?      @relation("EstablishmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?      @relation("EstablishmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([businessName])
+  @@index([managerName])
+  @@index([governorate])
+  @@index([deletedAt])
+  @@map("establishments")
+}
+
+model Contract {
+  id                 String         @id @default(uuid()) @db.Uuid
+  number             String         @unique @db.VarChar(100)
+  type               ContractType
+  startDate          DateTime       @map("start_date") @db.Date
+  endDate            DateTime       @map("end_date") @db.Date
+  status             ContractStatus @default(DRAFT)
+  establishmentId    String         @map("establishment_id") @db.Uuid
+  previousContractId String?        @unique @map("previous_contract_id") @db.Uuid
+  createdById        String?        @map("created_by_id") @db.Uuid
+  updatedById        String?        @map("updated_by_id") @db.Uuid
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt          DateTime?      @map("deleted_at") @db.Timestamptz(3)
+
+  establishment    Establishment @relation(fields: [establishmentId], references: [id], onDelete: Restrict)
+  vehicles         Vehicle[]
+  previousContract Contract?     @relation("ContractRenewal", fields: [previousContractId], references: [id], onDelete: SetNull)
+  renewedContract  Contract?     @relation("ContractRenewal")
+  createdBy        User?         @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy        User?         @relation("ContractUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([establishmentId, status])
+  @@index([status, endDate])
+  @@index([startDate, endDate])
+  @@index([deletedAt])
+  @@map("contracts")
+}
+
+model Vehicle {
+  id                 String      @id @default(uuid()) @db.Uuid
+  registrationNumber String      @unique @map("registration_number") @db.VarChar(50)
+  make               String      @db.VarChar(100)
+  model              String      @db.VarChar(100)
+  year               Int         @db.SmallInt
+  chassisNumber      String      @unique @map("chassis_number") @db.VarChar(100)
+  type               VehicleType
+  contractId         String      @map("contract_id") @db.Uuid
+  createdById        String?     @map("created_by_id") @db.Uuid
+  updatedById        String?     @map("updated_by_id") @db.Uuid
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt          DateTime?   @map("deleted_at") @db.Timestamptz(3)
+
+  contract  Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  createdBy User?    @relation("VehicleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?    @relation("VehicleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([contractId, make, model])
+  @@index([year])
+  @@index([deletedAt])
+  @@map("vehicles")
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  CONTRACT_EXPIRING
+  CONTRACT_EXPIRED
+
+  @@map("notification_type")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  IMPORT
+  EXPORT
+
+  @@map("audit_action")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  title     String           @db.VarChar(200)
+  message   String           @db.VarChar(1000)
+  type      NotificationType @default(INFO)
+  readAt    DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String?     @map("user_id") @db.Uuid
+  action      AuditAction
+  entity      String      @db.VarChar(100)
+  entityId    String?     @map("entity_id") @db.VarChar(100)
+  description String?     @db.VarChar(500)
+  metadata    Json?
+  ipAddress   String?     @map("ip_address") @db.VarChar(64)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
