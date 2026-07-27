@@ -80,4 +80,3 @@ npm run build -w backend
 npm run build -w frontend
 DATABASE_URL="postgresql://..." npx prisma validate --schema prisma/schema.prisma
 ```
-
