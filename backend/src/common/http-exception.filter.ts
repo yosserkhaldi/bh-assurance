@@ -4,12 +4,15 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const response = host.switchToHttp().getResponse<Response>();
     const request = host.switchToHttp().getRequest<Request>();
@@ -32,6 +35,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message = 'Ressource introuvable';
       }
     }
+
+    this.logger.error(`[${request.method}] ${request.url} -> ${status}: ${Array.isArray(message) ? message.join(', ') : message}`, exception instanceof Error ? exception.stack : undefined);
 
     response.status(status).json({
       statusCode: status,

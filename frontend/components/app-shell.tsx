@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, Building2, Car, ChartNoAxesCombined, ClipboardList, FileClock, LogOut, Menu, Users, X } from 'lucide-react';
+import { Bell, Building2, Car, ChartNoAxesCombined, ClipboardList, FileClock, Import, LogOut, Menu, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -13,6 +13,7 @@ const links = [
   { href: '/establishments', label: 'Etablissements', icon: Building2 },
   { href: '/contracts', label: 'Contrats', icon: ClipboardList },
   { href: '/vehicles', label: 'Vehicules', icon: Car },
+  { href: '/imports', label: 'Imports / Export SI', icon: Import },
   { href: '/users', label: 'Utilisateurs', icon: Users, admin: true },
   { href: '/audit-logs', label: 'Journal d’audit', icon: FileClock, admin: true },
   { href: '/notifications', label: 'Notifications', icon: Bell },

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { VehicleType } from '@prisma/client';
+import { Prisma, VehicleType } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { pageMeta } from '../common/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -45,6 +45,8 @@ export class VehiclesService {
         ...dto,
         registrationNumber: dto.registrationNumber.replace(/\s+/g, '').toUpperCase(),
         chassisNumber: dto.chassisNumber.replace(/\s+/g, '').toUpperCase(),
+        emptyWeight: dto.emptyWeight ? new Prisma.Decimal(dto.emptyWeight) : null,
+        totalWeight: dto.totalWeight ? new Prisma.Decimal(dto.totalWeight) : null,
         createdById: userId,
       },
     });
@@ -52,7 +54,15 @@ export class VehiclesService {
 
   async update(id: string, dto: UpdateVehicleDto, userId: string) {
     await this.findOne(id);
-    return this.prisma.vehicle.update({ where: { id }, data: { ...dto, updatedById: userId } });
+    return this.prisma.vehicle.update({
+      where: { id },
+      data: {
+        ...dto,
+        emptyWeight: dto.emptyWeight ? new Prisma.Decimal(dto.emptyWeight) : undefined,
+        totalWeight: dto.totalWeight ? new Prisma.Decimal(dto.totalWeight) : undefined,
+        updatedById: userId,
+      },
+    });
   }
 
   async remove(id: string, userId: string) {
@@ -75,6 +85,18 @@ export class VehiclesService {
         year: Number(row.getCell(4).value),
         chassisNumber: String(row.getCell(5).value ?? ''),
         type: String(row.getCell(6).value ?? 'OTHER').toUpperCase() as VehicleType,
+        usage: String(row.getCell(7).value ?? ''),
+        power: Number(row.getCell(8).value) || undefined,
+        displacement: Number(row.getCell(9).value) || undefined,
+        seats: Number(row.getCell(10).value) || undefined,
+        emptyWeight: String(row.getCell(11).value ?? '') || undefined,
+        totalWeight: String(row.getCell(12).value ?? '') || undefined,
+        circulationDate: String(row.getCell(13).value ?? '') || undefined,
+        categoryLabel: String(row.getCell(14).value ?? '') || undefined,
+        trailer: String(row.getCell(15).value ?? '') || undefined,
+        validityStart: String(row.getCell(16).value ?? '') || undefined,
+        validityEnd: String(row.getCell(17).value ?? '') || undefined,
+        intermediaryCode: String(row.getCell(18).value ?? '') || undefined,
         contractId,
       });
     });
@@ -83,6 +105,8 @@ export class VehiclesService {
       ...row,
       registrationNumber: row.registrationNumber.replace(/\s+/g, '').toUpperCase(),
       chassisNumber: row.chassisNumber.replace(/\s+/g, '').toUpperCase(),
+      emptyWeight: row.emptyWeight ? new Prisma.Decimal(row.emptyWeight) : undefined,
+      totalWeight: row.totalWeight ? new Prisma.Decimal(row.totalWeight) : undefined,
       createdById: userId,
     }));
     const result = await this.prisma.vehicle.createMany({ data, skipDuplicates: true });

@@ -129,19 +129,22 @@ model AuthSession {
 }
 
 model Establishment {
-  id           String      @id @default(uuid()) @db.Uuid
-  businessName String      @map("business_name") @db.VarChar(200)
-  rne          String      @unique @db.VarChar(50)
-  address      String      @db.VarChar(500)
-  governorate  Governorate
-  managerName  String      @map("manager_name") @db.VarChar(200)
-  phone        String      @db.VarChar(30)
-  email        String      @db.VarChar(255)
-  createdById  String?     @map("created_by_id") @db.Uuid
-  updatedById  String?     @map("updated_by_id") @db.Uuid
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt    DateTime?   @map("deleted_at") @db.Timestamptz(3)
+  id                 String      @id @default(uuid()) @db.Uuid
+  businessName       String      @map("business_name") @db.VarChar(200)
+  rne                String      @unique @db.VarChar(50)
+  uniqueIdentifier   String?     @map("unique_identifier") @db.VarChar(50)
+  address            String      @db.VarChar(500)
+  governorate        Governorate
+  managerName        String      @map("manager_name") @db.VarChar(200)
+  phone              String      @db.VarChar(30)
+  mobilePhone        String?     @map("mobile_phone") @db.VarChar(30)
+  email              String      @db.VarChar(255)
+  matriculeFiscal    String?     @map("matricule_fiscal") @db.VarChar(50)
+  createdById        String?     @map("created_by_id") @db.Uuid
+  updatedById        String?     @map("updated_by_id") @db.Uuid
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt          DateTime?   @map("deleted_at") @db.Timestamptz(3)
 
   contracts Contract[]
   createdBy User?      @relation("EstablishmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -158,6 +161,7 @@ model Contract {
   id                 String         @id @default(uuid()) @db.Uuid
   number             String         @unique @db.VarChar(100)
   type               ContractType
+  lot                String?        @db.VarChar(20)
   startDate          DateTime       @map("start_date") @db.Date
   endDate            DateTime       @map("end_date") @db.Date
   status             ContractStatus @default(DRAFT)
@@ -191,6 +195,18 @@ model Vehicle {
   year               Int         @db.SmallInt
   chassisNumber      String      @unique @map("chassis_number") @db.VarChar(100)
   type               VehicleType
+  usage              String?     @db.VarChar(100)
+  power              Int?        @db.SmallInt
+  displacement       Int?        @map("displacement") @db.SmallInt
+  seats              Int?        @db.SmallInt
+  emptyWeight        Decimal?    @map("empty_weight") @db.Decimal(10, 2)
+  totalWeight        Decimal?    @map("total_weight") @db.Decimal(10, 2)
+  circulationDate    DateTime?   @map("circulation_date") @db.Date
+  categoryLabel      String?     @map("category_label") @db.VarChar(100)
+  trailer            String?     @db.VarChar(50)
+  validityStart      DateTime?   @map("validity_start") @db.Date
+  validityEnd        DateTime?   @map("validity_end") @db.Date
+  intermediaryCode   String?     @map("intermediary_code") @db.VarChar(50)
   contractId         String      @map("contract_id") @db.Uuid
   createdById        String?     @map("created_by_id") @db.Uuid
   updatedById        String?     @map("updated_by_id") @db.Uuid
