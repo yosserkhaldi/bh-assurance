@@ -26,7 +26,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   if (!ready || !user) return <div className="grid min-h-screen place-items-center text-slate-500">Chargement...</div>;
   const logout = async () => {
-    try { await api.post('/auth/logout'); } finally { localStorage.clear(); router.replace('/login'); }
+    try {
+      await api.post('/auth/logout', { refreshToken: localStorage.getItem('refreshToken') });
+    } finally {
+      localStorage.clear();
+      router.replace('/login');
+    }
   };
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[250px_1fr]">

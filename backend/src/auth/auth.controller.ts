@@ -23,7 +23,7 @@ export class AuthController {
   @Post('logout')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  logout(@CurrentUser() user: JwtUser) {
-    return this.auth.logout(user.sub);
+  logout(@Body() dto: RefreshDto, @CurrentUser() user: JwtUser) {
+    return this.auth.logout(user.sub, dto.refreshToken);
   }
 }

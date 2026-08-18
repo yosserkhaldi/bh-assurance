@@ -46,11 +46,17 @@ export class AuthService {
     }
   }
 
-  async logout(userId: string) {
-    await this.prisma.authSession.updateMany({
+  async logout(userId: string, refreshToken: string) {
+    const sessions = await this.prisma.authSession.findMany({
       where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
     });
+    const session = await this.findMatchingSession(refreshToken, sessions);
+    if (session) {
+      await this.prisma.authSession.update({
+        where: { id: session.id },
+        data: { revokedAt: new Date() },
+      });
+    }
     return { message: 'Deconnexion effectuee' };
   }
 

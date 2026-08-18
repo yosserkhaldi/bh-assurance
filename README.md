@@ -37,6 +37,29 @@ npm run dev
 - API : http://localhost:3001/api
 - Swagger : http://localhost:3001/api/docs
 
+## Démarrage avec Docker (dev)
+
+Vous pouvez aussi lancer la base de données, le backend en mode watch et le
+frontend dans Docker avec une seule commande :
+
+```bash
+npm run docker:dev
+```
+
+Cela construit l'image de développement, applique les migrations Prisma,
+injecte les données de démonstration (idempotent) et démarre le backend avec
+`nest start --watch` ainsi que le frontend Next.js en dev.
+
+- Frontend : http://localhost:3000
+- API : http://localhost:3001/api
+- Swagger : http://localhost:3001/api/docs
+
+Pour arrêter la stack :
+
+```bash
+npm run docker:dev:down
+```
+
 Compte initial :
 
 - Email : `admin@bh-assurance.tn`
