@@ -5,19 +5,19 @@ import { Response } from 'express';
 import { ContractStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/current-user.decorator';
-import { Roles } from '../common/roles.decorator';
-import { RolesGuard } from '../common/roles.guard';
+import { Permission } from '../common/permissions';
+import { Permissions } from '../common/permissions.decorator';
 import { ImportsService } from './imports.service';
 
 @ApiTags('Imports / Export SI')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard)
 @Controller('imports')
 export class ImportsController {
   constructor(private readonly service: ImportsService) {}
 
   @Post('establishments')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions(Permission.IMPORTS_IMPORT_ESTABLISHMENTS)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10_000_000 } }))
   importEstablishments(@UploadedFile() file: Express.Multer.File, @CurrentUser() u: JwtUser) {
@@ -25,7 +25,7 @@ export class ImportsController {
   }
 
   @Post('tarification')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions(Permission.IMPORTS_IMPORT_TARIFICATION)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50_000_000 } }))
   importTarification(@UploadedFile() file: Express.Multer.File, @CurrentUser() u: JwtUser) {
@@ -33,7 +33,7 @@ export class ImportsController {
   }
 
   @Get('export-si')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions(Permission.IMPORTS_EXPORT_SI)
   async exportSi(
     @Query('lot') lot?: string,
     @Query('contractId') contractId?: string,

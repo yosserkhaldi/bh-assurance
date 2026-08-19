@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ContractStatus, ContractType, Governorate, Prisma, VehicleType } from '@prisma/client';
+import { ContractStatus, Governorate, Prisma, VehicleType } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';

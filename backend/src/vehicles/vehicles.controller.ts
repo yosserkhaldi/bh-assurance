@@ -4,34 +4,34 @@ import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/current-user.decorator';
-import { Roles } from '../common/roles.decorator';
-import { RolesGuard } from '../common/roles.guard';
+import { Permission } from '../common/permissions';
+import { Permissions } from '../common/permissions.decorator';
 import { CreateVehicleDto, UpdateVehicleDto, VehicleQueryDto } from './vehicles.dto';
 import { VehiclesService } from './vehicles.service';
 
 @ApiTags('Vehicules')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard)
 @Controller('vehicles')
 export class VehiclesController {
   constructor(private readonly service: VehiclesService) {}
-  @Get() findAll(@Query() q: VehicleQueryDto) { return this.service.findAll(q); }
-  @Get('export/excel')
+  @Get() @Permissions(Permission.VEHICLES_READ) findAll(@Query() q: VehicleQueryDto) { return this.service.findAll(q); }
+  @Get('export/excel') @Permissions(Permission.VEHICLES_EXPORT)
   async export(@Query() q: VehicleQueryDto, @Res() res: Response) {
     const file = await this.service.exportExcel(q);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=vehicules.xlsx');
     res.send(file);
   }
-  @Get(':id') findOne(@Param('id', ParseUUIDPipe) id: string) { return this.service.findOne(id); }
-  @Post() @Roles('ADMIN', 'MANAGER') create(@Body() d: CreateVehicleDto, @CurrentUser() u: JwtUser) { return this.service.create(d, u.sub); }
+  @Get(':id') @Permissions(Permission.VEHICLES_READ) findOne(@Param('id', ParseUUIDPipe) id: string) { return this.service.findOne(id); }
+  @Post() @Permissions(Permission.VEHICLES_CREATE) create(@Body() d: CreateVehicleDto, @CurrentUser() u: JwtUser) { return this.service.create(d, u.sub); }
   @Post('import/:contractId')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions(Permission.VEHICLES_IMPORT)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5_000_000 } }))
   import(@Param('contractId', ParseUUIDPipe) contractId: string, @UploadedFile() file: Express.Multer.File, @CurrentUser() u: JwtUser) {
     return this.service.importExcel(file.buffer, contractId, u.sub);
   }
-  @Patch(':id') @Roles('ADMIN', 'MANAGER') update(@Param('id', ParseUUIDPipe) id: string, @Body() d: UpdateVehicleDto, @CurrentUser() u: JwtUser) { return this.service.update(id, d, u.sub); }
-  @Delete(':id') @Roles('ADMIN', 'MANAGER') remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: JwtUser) { return this.service.remove(id, u.sub); }
+  @Patch(':id') @Permissions(Permission.VEHICLES_UPDATE) update(@Param('id', ParseUUIDPipe) id: string, @Body() d: UpdateVehicleDto, @CurrentUser() u: JwtUser) { return this.service.update(id, d, u.sub); }
+  @Delete(':id') @Permissions(Permission.VEHICLES_DELETE) remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: JwtUser) { return this.service.remove(id, u.sub); }
 }

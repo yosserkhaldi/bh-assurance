@@ -8,7 +8,7 @@ export class ContractQueryDto extends PaginationDto {
   @IsOptional() @IsString() lot?: string;
 }
 export class CreateContractDto {
-  @IsString() @IsNotEmpty() @MaxLength(100) @Matches(/^[A-Z0-9][A-Z0-9\/_-]{2,99}$/i, { message: 'Le numero de contrat est invalide' }) number!: string;
+  @IsString() @IsNotEmpty() @MaxLength(100) @Matches(/^[A-Z0-9][A-Z0-9/_-]{2,99}$/i, { message: 'Le numero de contrat est invalide' }) number!: string;
   @IsEnum(ContractType) type!: ContractType;
   @IsOptional() @IsString() @MaxLength(20) lot?: string;
   @IsDateString() startDate!: string;

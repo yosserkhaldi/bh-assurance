@@ -1,6 +1,6 @@
 import { VehicleType } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsDateString, IsDecimal, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { PaginationDto } from '../common/pagination.dto';
 
 export class VehicleQueryDto extends PaginationDto {

@@ -3,9 +3,9 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole, UserStatus } from '@prisma/client';
 import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { PaginationDto } from '../common/pagination.dto';
-import { Roles } from '../common/roles.decorator';
-import { RolesGuard } from '../common/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permission } from '../common/permissions';
+import { Permissions } from '../common/permissions.decorator';
 import { UsersService } from './users.service';
 
 class CreateUserDto {
@@ -24,13 +24,12 @@ class UpdateUserDto {
 
 @ApiTags('Utilisateurs')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly service: UsersService) {}
-  @Get() findAll(@Query() query: PaginationDto) { return this.service.findAll(query); }
-  @Post() create(@Body() dto: CreateUserDto) { return this.service.create(dto); }
-  @Patch(':id') update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto) { return this.service.update(id, dto); }
-  @Delete(':id') remove(@Param('id', ParseUUIDPipe) id: string) { return this.service.remove(id); }
+  @Get() @Permissions(Permission.USERS_READ) findAll(@Query() query: PaginationDto) { return this.service.findAll(query); }
+  @Post() @Permissions(Permission.USERS_CREATE) create(@Body() dto: CreateUserDto) { return this.service.create(dto); }
+  @Patch(':id') @Permissions(Permission.USERS_UPDATE) update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto) { return this.service.update(id, dto); }
+  @Delete(':id') @Permissions(Permission.USERS_DELETE) remove(@Param('id', ParseUUIDPipe) id: string) { return this.service.remove(id); }
 }

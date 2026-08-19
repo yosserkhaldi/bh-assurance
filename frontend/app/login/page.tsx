@@ -25,8 +25,9 @@ export default function LoginPage() {
       localStorage.setItem('refreshToken', data.refreshToken);
       localStorage.setItem('user', JSON.stringify(data.user));
       router.replace('/dashboard');
-    } catch (e: any) {
-      setError(e.response?.data?.message ?? 'Connexion impossible');
+    } catch (e) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setError(err.response?.data?.message ?? 'Connexion impossible');
     }
   };
   return (

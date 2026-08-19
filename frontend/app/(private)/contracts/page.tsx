@@ -1,20 +1,24 @@
 'use client';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/modal';
 import { PageHeader } from '@/components/page-header';
-import { useAuth } from '@/hooks/use-auth';
+import { useCan } from '@/hooks/use-can';
 import { usePaginated } from '@/hooks/use-paginated';
 import { useRealtimeReload } from '@/hooks/use-realtime-reload';
 import { api } from '@/lib/api';
+import { Permission } from '@/lib/permissions';
 import type { Contract, EstablishmentForContract } from '@/types';
 
 const empty = { number: '', type: 'FLEET', startDate: '', endDate: '', status: 'ACTIVE', establishmentId: '' };
 export default function ContractsPage() {
-  const { user } = useAuth();
-  const canMutate = user?.role !== 'VIEWER';
+  const { can } = useCan();
+  const canCreate = can(Permission.CONTRACTS_CREATE);
+  const canUpdate = can(Permission.CONTRACTS_UPDATE);
+  const canDelete = can(Permission.CONTRACTS_DELETE);
+  const canRenew = can(Permission.CONTRACTS_RENEW);
   const list = usePaginated<Contract>('/contracts');
   useRealtimeReload(['contract', 'establishment'], () => { void list.reload(); void loadEstablishments(); });
   const [establishments, setEstablishments] = useState<EstablishmentForContract[]>([]);
@@ -29,17 +33,17 @@ export default function ContractsPage() {
     setForm(item ? { number: renew ? '' : item.number, type: item.type, startDate: item.startDate.slice(0,10), endDate: item.endDate.slice(0,10), status: renew ? 'ACTIVE' : item.status, establishmentId: item.establishmentId } : empty); setOpen(true);
   };
   const save = async (e: React.FormEvent) => { e.preventDefault(); if (renewing) await api.post(`/contracts/${renewing.id}/renew`, form); else if (editing) await api.patch(`/contracts/${editing.id}`, form); else await api.post('/contracts', form); setOpen(false); await list.reload(); };
-  const remove = async (id: string) => { if (confirm('Archiver ce contrat et ses véhicules ?')) { await api.delete(`/contracts/${id}`); await list.reload(); } };
+  const remove = useCallback(async (id: string) => { if (confirm('Archiver ce contrat et ses véhicules ?')) { await api.delete(`/contracts/${id}`); await list.reload(); } }, [list]);
   const columns = useMemo<ColumnDef<Contract>[]>(() => [
     { accessorKey: 'number', header: 'Numero', cell: ({ row }) => <span className="font-semibold">{row.original.number}</span> },
     { id: 'establishment', header: 'Etablissement', cell: ({ row }) => row.original.establishment.businessName },
     { accessorKey: 'type', header: 'Type' }, { accessorKey: 'status', header: 'Statut', cell: ({ row }) => <span className="rounded-sm bg-slate-100 px-2 py-1 text-xs font-semibold">{row.original.status}</span> },
     { accessorKey: 'endDate', header: 'Echeance', cell: ({ row }) => new Date(row.original.endDate).toLocaleDateString('fr-TN') },
     { id: 'vehicles', header: 'Vehicules', cell: ({ row }) => row.original._count?.vehicles ?? 0 },
-    { id: 'actions', header: 'Actions', cell: ({ row }) => canMutate ? <div className="flex gap-1"><button title="Renouveler" className="btn-secondary !h-9 !px-2 text-emerald-700" onClick={() => begin(row.original, true)}><RefreshCw size={16} /></button><button title="Modifier" className="btn-secondary !h-9 !px-2" onClick={() => begin(row.original)}><Pencil size={16} /></button><button title="Supprimer" className="btn-secondary !h-9 !px-2 text-red-600" onClick={() => remove(row.original.id)}><Trash2 size={16} /></button></div> : null },
-  ], []);
+    { id: 'actions', header: 'Actions', cell: ({ row }) => (canUpdate || canDelete || canRenew) ? <div className="flex gap-1">{canRenew && <button title="Renouveler" className="btn-secondary !h-9 !px-2 text-emerald-700" onClick={() => begin(row.original, true)}><RefreshCw size={16} /></button>}{canUpdate && <button title="Modifier" className="btn-secondary !h-9 !px-2" onClick={() => begin(row.original)}><Pencil size={16} /></button>}{canDelete && <button title="Supprimer" className="btn-secondary !h-9 !px-2 text-red-600" onClick={() => remove(row.original.id)}><Trash2 size={16} /></button>}</div> : null },
+  ], [canUpdate, canDelete, canRenew, remove]);
   const set = (key: keyof typeof empty, value: string) => setForm((f) => ({ ...f, [key]: value }));
-  return <><PageHeader title="Contrats" description="Suivi des polices flotte et de leurs echeances" action={canMutate ? <button className="btn-primary" onClick={() => begin()}><Plus size={18}/>Ajouter</button> : undefined} /><DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
+  return <><PageHeader title="Contrats" description="Suivi des polices flotte et de leurs echeances" action={canCreate ? <button className="btn-primary" onClick={() => begin()}><Plus size={18}/>Ajouter</button> : undefined} /><DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
     <Modal title={renewing ? `Renouveler ${renewing.number}` : editing ? 'Modifier le contrat' : 'Nouveau contrat'} open={open} onClose={() => setOpen(false)}><form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
       <label><span className="label">Numero</span><input required minLength={3} maxLength={100} pattern="[A-Za-z0-9][A-Za-z0-9/_-]{2,99}" className="field" value={form.number} disabled={!!editing} onChange={(e) => set('number', e.target.value)} /></label>
       <label><span className="label">Type</span><select className="field" value={form.type} onChange={(e) => set('type', e.target.value)}>{['FLEET','INDIVIDUAL','TEMPORARY','OTHER'].map((v)=><option key={v}>{v}</option>)}</select></label>

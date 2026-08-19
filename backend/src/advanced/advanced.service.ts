@@ -7,8 +7,55 @@ export class AdvancedService {
   constructor(private readonly prisma: PrismaService) {}
 
   async search(term: string) {
-    if (!term?.trim()) return { establishments: [], contracts: [], vehicles: [] };
-    const contains = { contains: term.trim(), mode: 'insensitive' as const };
+    const q = term?.trim();
+    if (!q) return { establishments: [], contracts: [], vehicles: [] };
+
+    if (q.length >= 3) {
+      const [establishmentIds, contractIds, vehicleIds] = await this.prisma.$transaction([
+        this.prisma.$queryRaw<{ id: string }[]>`
+          SELECT id FROM "establishments"
+          WHERE "deleted_at" IS NULL
+            AND similarity("business_name", ${q}) > 0.1
+          ORDER BY similarity("business_name", ${q}) DESC
+          LIMIT 8
+        `,
+        this.prisma.$queryRaw<{ id: string }[]>`
+          SELECT c.id FROM "contracts" c
+          WHERE c."deleted_at" IS NULL
+            AND similarity(c."number", ${q}) > 0.1
+          ORDER BY similarity(c."number", ${q}) DESC
+          LIMIT 8
+        `,
+        this.prisma.$queryRaw<{ id: string }[]>`
+          SELECT v.id FROM "vehicles" v
+          WHERE v."deleted_at" IS NULL
+            AND (
+              similarity(v."registration_number", ${q}) > 0.1
+              OR similarity(v."chassis_number", ${q}) > 0.1
+            )
+          ORDER BY GREATEST(similarity(v."registration_number", ${q}), similarity(v."chassis_number", ${q})) DESC
+          LIMIT 8
+        `,
+      ]);
+
+      const [establishments, contracts, vehicles] = await this.prisma.$transaction([
+        this.prisma.establishment.findMany({
+          where: { id: { in: establishmentIds.map((e) => e.id) } },
+        }),
+        this.prisma.contract.findMany({
+          where: { id: { in: contractIds.map((c) => c.id) } },
+          include: { establishment: true },
+        }),
+        this.prisma.vehicle.findMany({
+          where: { id: { in: vehicleIds.map((v) => v.id) } },
+          include: { contract: true },
+        }),
+      ]);
+
+      return { establishments, contracts, vehicles };
+    }
+
+    const contains = { contains: q, mode: 'insensitive' as const };
     const [establishments, contracts, vehicles] = await this.prisma.$transaction([
       this.prisma.establishment.findMany({ where: { deletedAt: null, OR: [{ businessName: contains }, { rne: contains }] }, take: 8 }),
       this.prisma.contract.findMany({ where: { deletedAt: null, number: contains }, include: { establishment: true }, take: 8 }),
