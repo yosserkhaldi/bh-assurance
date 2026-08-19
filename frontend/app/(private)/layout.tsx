@@ -1,4 +1,5 @@
 import { AppShell } from '@/components/app-shell';
+import { RealtimeProvider } from '@/components/realtime-provider';
 export default function PrivateLayout({ children }: { children: React.ReactNode }) {
-  return <AppShell>{children}</AppShell>;
+  return <RealtimeProvider><AppShell>{children}</AppShell></RealtimeProvider>;
 }

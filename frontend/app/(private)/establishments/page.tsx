@@ -8,6 +8,7 @@ import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/modal';
 import { PageHeader } from '@/components/page-header';
 import { usePaginated } from '@/hooks/use-paginated';
+import { useRealtimeReload } from '@/hooks/use-realtime-reload';
 import { api } from '@/lib/api';
 import type { Establishment } from '@/types';
 
@@ -15,6 +16,7 @@ const empty = { businessName: '', rne: '', address: '', governorate: 'TUNIS', ma
 
 export default function EstablishmentsPage() {
   const list = usePaginated<Establishment>('/establishments');
+  useRealtimeReload(['establishment'], list.reload);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Establishment | null>(null);
   const [form, setForm] = useState(empty);

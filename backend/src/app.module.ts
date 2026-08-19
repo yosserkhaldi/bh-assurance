@@ -10,6 +10,7 @@ import { EstablishmentsModule } from './establishments/establishments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
+import { EventsModule } from './events/events.module';
 import { ImportsModule } from './imports/imports.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { ImportsModule } from './imports/imports.module';
     DashboardModule,
     AdvancedModule,
     ImportsModule,
+    EventsModule,
   ],
 })
 export class AppModule {}

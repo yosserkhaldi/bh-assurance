@@ -15,6 +15,7 @@ import { EstablishmentsService } from './establishments.service';
 export class EstablishmentsController {
   constructor(private readonly service: EstablishmentsService) {}
   @Get() findAll(@Query() query: PaginationDto) { return this.service.findAll(query); }
+  @Get('for-contract') findForContract() { return this.service.findForContract(); }
   @Get(':id') findOne(@Param('id', ParseUUIDPipe) id: string) { return this.service.findOne(id); }
   @Post() @Roles('ADMIN', 'MANAGER') create(@Body() dto: CreateEstablishmentDto, @CurrentUser() u: JwtUser) { return this.service.create(dto, u.sub); }
   @Patch(':id') @Roles('ADMIN', 'MANAGER') update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEstablishmentDto, @CurrentUser() u: JwtUser) { return this.service.update(id, dto, u.sub); }

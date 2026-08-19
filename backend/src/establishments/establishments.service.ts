@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PaginationDto, pageMeta } from '../common/pagination.dto';
+import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEstablishmentDto, UpdateEstablishmentDto } from './establishments.dto';
 
 @Injectable()
 export class EstablishmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventsService,
+  ) {}
 
   async findAll(query: PaginationDto) {
     const where = {
@@ -42,23 +46,55 @@ export class EstablishmentsService {
     return item;
   }
 
-  create(dto: CreateEstablishmentDto, userId: string) {
-    return this.prisma.establishment.create({
+  async findForContract() {
+    const [establishments, activeContracts] = await this.prisma.$transaction([
+      this.prisma.establishment.findMany({ where: { deletedAt: null }, orderBy: { businessName: 'asc' } }),
+      this.prisma.contract.findMany({
+        where: { deletedAt: null },
+        select: { establishmentId: true },
+        distinct: ['establishmentId'],
+      }),
+    ]);
+    const activeIds = new Set(activeContracts.map((c) => c.establishmentId));
+    return establishments.map((e) => ({
+      ...e,
+      hasActiveContract: activeIds.has(e.id),
+    }));
+  }
+
+  async create(dto: CreateEstablishmentDto, userId: string) {
+    const establishment = await this.prisma.establishment.create({
       data: { ...dto, rne: dto.rne.trim().toUpperCase(), email: dto.email.toLowerCase(), createdById: userId },
     });
+    this.events.emit({
+      type: 'ESTABLISHMENT_CREATED',
+      entity: 'establishment',
+      id: establishment.id,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+    return establishment;
   }
 
   async update(id: string, dto: UpdateEstablishmentDto, userId: string) {
     await this.findOne(id);
-    return this.prisma.establishment.update({
+    const establishment = await this.prisma.establishment.update({
       where: { id },
       data: { ...dto, email: dto.email?.toLowerCase(), updatedById: userId },
     });
+    this.events.emit({
+      type: 'ESTABLISHMENT_UPDATED',
+      entity: 'establishment',
+      id: establishment.id,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+    return establishment;
   }
 
   async remove(id: string, userId: string) {
     await this.findOne(id);
-    return this.prisma.$transaction([
+    const result = await this.prisma.$transaction([
       this.prisma.vehicle.updateMany({
         where: { contract: { establishmentId: id }, deletedAt: null },
         data: { deletedAt: new Date(), updatedById: userId },
@@ -72,5 +108,13 @@ export class EstablishmentsService {
         data: { deletedAt: new Date(), updatedById: userId },
       }),
     ]);
+    this.events.emit({
+      type: 'ESTABLISHMENT_DELETED',
+      entity: 'establishment',
+      id,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+    return result;
   }
 }

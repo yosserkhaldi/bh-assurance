@@ -6,12 +6,14 @@ import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/modal';
 import { PageHeader } from '@/components/page-header';
 import { usePaginated } from '@/hooks/use-paginated';
+import { useRealtimeReload } from '@/hooks/use-realtime-reload';
 import { api } from '@/lib/api';
 import type { Contract, Paginated, Vehicle } from '@/types';
 
 const empty = { registrationNumber: '', make: '', model: '', year: String(new Date().getFullYear()), chassisNumber: '', type: 'CAR', contractId: '' };
 export default function VehiclesPage() {
   const list = usePaginated<Vehicle>('/vehicles');
+  useRealtimeReload(['vehicle', 'contract'], () => { void list.reload(); void api.get<Paginated<Contract>>('/contracts', { params: { limit: 100 } }).then((r) => setContracts(r.data.data)); });
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [open, setOpen] = useState(false); const [editing, setEditing] = useState<Vehicle | null>(null); const [form, setForm] = useState(empty);
   const fileRef = useRef<HTMLInputElement>(null);

@@ -1,11 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractQueryDto, CreateContractDto, RenewContractDto, UpdateContractDto } from './contracts.dto';
 import { pageMeta } from '../common/pagination.dto';
 
 @Injectable()
 export class ContractsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventsService,
+  ) {}
 
   async findAll(query: ContractQueryDto) {
     const where = {
@@ -41,9 +45,10 @@ export class ContractsService {
     return item;
   }
 
-  create(dto: CreateContractDto, userId: string) {
+  async create(dto: CreateContractDto, userId: string) {
     this.assertDates(dto.startDate, dto.endDate);
-    return this.prisma.contract.create({
+    await this.assertSingleActiveContract(dto.establishmentId);
+    const contract = await this.prisma.contract.create({
       data: {
         ...dto,
         number: dto.number.trim().toUpperCase(),
@@ -52,12 +57,21 @@ export class ContractsService {
         createdById: userId,
       },
     });
+    this.events.emit({
+      type: 'CONTRACT_CREATED',
+      entity: 'contract',
+      id: contract.id,
+      establishmentId: contract.establishmentId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+    return contract;
   }
 
   async update(id: string, dto: UpdateContractDto, userId: string) {
     const current = await this.findOne(id);
     this.assertDates(dto.startDate ?? current.startDate.toISOString(), dto.endDate ?? current.endDate.toISOString());
-    return this.prisma.contract.update({
+    const contract = await this.prisma.contract.update({
       where: { id },
       data: {
         ...dto,
@@ -66,6 +80,15 @@ export class ContractsService {
         updatedById: userId,
       },
     });
+    this.events.emit({
+      type: 'CONTRACT_UPDATED',
+      entity: 'contract',
+      id: contract.id,
+      establishmentId: contract.establishmentId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+    return contract;
   }
 
   async renew(id: string, dto: RenewContractDto, userId: string) {
@@ -75,8 +98,11 @@ export class ContractsService {
     }
     this.assertDates(dto.startDate, dto.endDate);
     return this.prisma.$transaction(async (tx) => {
-      await tx.contract.update({ where: { id }, data: { status: 'RENEWED', updatedById: userId } });
-      return tx.contract.create({
+      await tx.contract.update({
+        where: { id },
+        data: { status: 'RENEWED', deletedAt: new Date(), updatedById: userId },
+      });
+      const contract = await tx.contract.create({
         data: {
           ...dto,
           number: dto.number.trim().toUpperCase(),
@@ -86,18 +112,49 @@ export class ContractsService {
           createdById: userId,
         },
       });
+      this.events.emit({
+        type: 'CONTRACT_RENEWED',
+        entity: 'contract',
+        id: contract.id,
+        establishmentId: contract.establishmentId,
+        userId,
+        timestamp: new Date().toISOString(),
+      });
+      return contract;
     });
   }
 
   async remove(id: string, userId: string) {
-    await this.findOne(id);
-    return this.prisma.$transaction([
+    const current = await this.findOne(id);
+    const establishmentId = current.establishmentId;
+    const result = await this.prisma.$transaction([
       this.prisma.vehicle.updateMany({ where: { contractId: id, deletedAt: null }, data: { deletedAt: new Date(), updatedById: userId } }),
       this.prisma.contract.update({ where: { id }, data: { deletedAt: new Date(), updatedById: userId } }),
     ]);
+    this.events.emit({
+      type: 'CONTRACT_DELETED',
+      entity: 'contract',
+      id,
+      establishmentId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+    return result;
   }
 
   private assertDates(start: string, end: string) {
     if (new Date(start) >= new Date(end)) throw new BadRequestException('La date de fin doit etre posterieure a la date de debut');
+  }
+
+  private async assertSingleActiveContract(establishmentId: string, excludeContractId?: string) {
+    const where: { establishmentId: string; deletedAt: null; id?: { not: string } } = {
+      establishmentId,
+      deletedAt: null,
+    };
+    if (excludeContractId) where.id = { not: excludeContractId };
+    const existing = await this.prisma.contract.findFirst({ where });
+    if (existing) {
+      throw new BadRequestException('Cet etablissement possede deja un contrat actif');
+    }
   }
 }

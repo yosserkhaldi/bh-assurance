@@ -1,11 +1,15 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ContractStatus, ContractType, Governorate, Prisma, VehicleType } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
+import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ImportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventsService,
+  ) {}
 
   // ===================== IMPORT ÉTABLISSEMENTS =====================
   async importEstablishments(buffer: Buffer, userId: string) {
@@ -62,9 +66,23 @@ export class ImportsService {
             where: { id: existing.id },
             data: { ...data, updatedById: userId } as Prisma.EstablishmentUncheckedUpdateInput,
           });
+          this.events.emit({
+            type: 'ESTABLISHMENT_UPDATED',
+            entity: 'establishment',
+            id: existing.id,
+            userId,
+            timestamp: new Date().toISOString(),
+          });
           updated++;
         } else {
-          await this.prisma.establishment.create({ data: { ...data, createdById: userId } as Prisma.EstablishmentUncheckedCreateInput });
+          const createdEstablishment = await this.prisma.establishment.create({ data: { ...data, createdById: userId } as Prisma.EstablishmentUncheckedCreateInput });
+          this.events.emit({
+            type: 'ESTABLISHMENT_CREATED',
+            entity: 'establishment',
+            id: createdEstablishment.id,
+            userId,
+            timestamp: new Date().toISOString(),
+          });
           created++;
         }
       }
@@ -200,6 +218,15 @@ export class ImportsService {
         }
       }
 
+      if (vehiclesCreated > 0 || contractsCreated > 0) {
+        this.events.emit({
+          type: 'VEHICLE_IMPORTED',
+          entity: 'vehicle',
+          id: 'import-batch',
+          userId,
+          timestamp: new Date().toISOString(),
+        });
+      }
       return { contractsCreated, vehiclesCreated, skipped, groups: groups.size };
     } catch (error) {
       console.error('[IMPORT TARIFICATION ERROR]', error);

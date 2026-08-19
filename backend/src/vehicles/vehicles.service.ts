@@ -1,13 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, VehicleType } from '@prisma/client';
 import ExcelJS from 'exceljs';
+import { EventsService } from '../events/events.service';
 import { pageMeta } from '../common/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateVehicleDto, UpdateVehicleDto, VehicleQueryDto } from './vehicles.dto';
 
 @Injectable()
 export class VehiclesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventsService,
+  ) {}
 
   async findAll(query: VehicleQueryDto) {
     const where = {
@@ -39,8 +43,8 @@ export class VehiclesService {
     return item;
   }
 
-  create(dto: CreateVehicleDto, userId: string) {
-    return this.prisma.vehicle.create({
+  async create(dto: CreateVehicleDto, userId: string) {
+    const vehicle = await this.prisma.vehicle.create({
       data: {
         ...dto,
         registrationNumber: dto.registrationNumber.replace(/\s+/g, '').toUpperCase(),
@@ -50,11 +54,20 @@ export class VehiclesService {
         createdById: userId,
       },
     });
+    this.events.emit({
+      type: 'VEHICLE_CREATED',
+      entity: 'vehicle',
+      id: vehicle.id,
+      contractId: vehicle.contractId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+    return vehicle;
   }
 
   async update(id: string, dto: UpdateVehicleDto, userId: string) {
     await this.findOne(id);
-    return this.prisma.vehicle.update({
+    const vehicle = await this.prisma.vehicle.update({
       where: { id },
       data: {
         ...dto,
@@ -63,11 +76,30 @@ export class VehiclesService {
         updatedById: userId,
       },
     });
+    this.events.emit({
+      type: 'VEHICLE_UPDATED',
+      entity: 'vehicle',
+      id: vehicle.id,
+      contractId: vehicle.contractId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+    return vehicle;
   }
 
   async remove(id: string, userId: string) {
-    await this.findOne(id);
-    return this.prisma.vehicle.update({ where: { id }, data: { deletedAt: new Date(), updatedById: userId } });
+    const current = await this.findOne(id);
+    const contractId = current.contractId;
+    const vehicle = await this.prisma.vehicle.update({ where: { id }, data: { deletedAt: new Date(), updatedById: userId } });
+    this.events.emit({
+      type: 'VEHICLE_DELETED',
+      entity: 'vehicle',
+      id,
+      contractId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+    return vehicle;
   }
 
   async importExcel(buffer: Buffer, contractId: string, userId: string) {
@@ -110,6 +142,14 @@ export class VehiclesService {
       createdById: userId,
     }));
     const result = await this.prisma.vehicle.createMany({ data, skipDuplicates: true });
+    this.events.emit({
+      type: 'VEHICLE_IMPORTED',
+      entity: 'vehicle',
+      id: contractId,
+      contractId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
     return { imported: result.count, ignored: rows.length - result.count };
   }
 

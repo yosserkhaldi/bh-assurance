@@ -6,18 +6,21 @@ import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/modal';
 import { PageHeader } from '@/components/page-header';
 import { usePaginated } from '@/hooks/use-paginated';
+import { useRealtimeReload } from '@/hooks/use-realtime-reload';
 import { api } from '@/lib/api';
-import type { Contract, Establishment, Paginated } from '@/types';
+import type { Contract, EstablishmentForContract } from '@/types';
 
 const empty = { number: '', type: 'FLEET', startDate: '', endDate: '', status: 'ACTIVE', establishmentId: '' };
 export default function ContractsPage() {
   const list = usePaginated<Contract>('/contracts');
-  const [establishments, setEstablishments] = useState<Establishment[]>([]);
+  useRealtimeReload(['contract', 'establishment'], () => { void list.reload(); void loadEstablishments(); });
+  const [establishments, setEstablishments] = useState<EstablishmentForContract[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Contract | null>(null);
   const [renewing, setRenewing] = useState<Contract | null>(null);
   const [form, setForm] = useState(empty);
-  useEffect(() => { void api.get<Paginated<Establishment>>('/establishments', { params: { limit: 100 } }).then((r) => setEstablishments(r.data.data)); }, []);
+  const loadEstablishments = () => void api.get<EstablishmentForContract[]>('/establishments/for-contract').then((r) => setEstablishments(r.data));
+  useEffect(() => { loadEstablishments(); }, []);
   const begin = (item?: Contract, renew = false) => {
     setEditing(renew ? null : item ?? null); setRenewing(renew ? item! : null);
     setForm(item ? { number: renew ? '' : item.number, type: item.type, startDate: item.startDate.slice(0,10), endDate: item.endDate.slice(0,10), status: renew ? 'ACTIVE' : item.status, establishmentId: item.establishmentId } : empty); setOpen(true);
@@ -40,7 +43,7 @@ export default function ContractsPage() {
       <label><span className="label">Date de debut</span><input required type="date" className="field" max={form.endDate || undefined} value={form.startDate} onChange={(e) => set('startDate', e.target.value)} /></label>
       <label><span className="label">Date de fin</span><input required type="date" className="field" min={form.startDate || undefined} value={form.endDate} onChange={(e) => set('endDate', e.target.value)} /></label>
       <label><span className="label">Statut</span><select className="field" value={form.status} onChange={(e) => set('status', e.target.value)}>{['DRAFT','ACTIVE','EXPIRING_SOON','EXPIRED','CANCELLED'].map((v)=><option key={v}>{v}</option>)}</select></label>
-      <label><span className="label">Etablissement</span><select required className="field" disabled={!!editing || !!renewing} value={form.establishmentId} onChange={(e) => set('establishmentId', e.target.value)}><option value="">Selectionner</option>{establishments.map((e)=><option key={e.id} value={e.id}>{e.businessName}</option>)}</select></label>
+      <label><span className="label">Etablissement</span><select required className="field" disabled={!!editing || !!renewing} value={form.establishmentId} onChange={(e) => set('establishmentId', e.target.value)}><option value="">Selectionner</option>{establishments.map((e)=><option key={e.id} value={e.id} disabled={e.hasActiveContract}>{e.businessName}{e.hasActiveContract ? ' (contrat actif existant)' : ''}</option>)}</select></label>
       <div className="flex justify-end gap-2 sm:col-span-2"><button type="button" className="btn-secondary" onClick={() => setOpen(false)}>Annuler</button><button className="btn-primary">Enregistrer</button></div>
     </form></Modal></>;
 }

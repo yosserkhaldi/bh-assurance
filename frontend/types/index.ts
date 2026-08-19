@@ -6,6 +6,9 @@ export interface Establishment {
   id: string; businessName: string; rne: string; address: string; governorate: string;
   managerName: string; phone: string; email: string; _count?: { contracts: number };
 }
+export interface EstablishmentForContract extends Establishment {
+  hasActiveContract: boolean;
+}
 export interface Contract {
   id: string; number: string; type: string; startDate: string; endDate: string;
   status: string; establishmentId: string; establishment: Establishment; _count?: { vehicles: number };
