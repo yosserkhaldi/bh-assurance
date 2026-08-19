@@ -6,9 +6,9 @@
     "start:dev": "nest start --watch",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest --passWithNoTests",
-    "prisma:generate": "prisma generate --schema ../prisma/schema.prisma",
-    "prisma:migrate": "prisma migrate dev --schema ../prisma/schema.prisma",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:generate": "cd .. && prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate": "cd .. && prisma migrate dev --schema prisma/schema.prisma",
+    "prisma:seed": "cd .. && tsx backend/prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
@@ -45,5 +45,3 @@
     "typescript": "^5.9.2"
   }
 }
-
-
