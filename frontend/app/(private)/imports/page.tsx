@@ -2,10 +2,13 @@
 
 import { Download, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { useAuth } from '@/hooks/use-auth';
 import { PageHeader } from '@/components/page-header';
 import { api } from '@/lib/api';
 
 export default function ImportsPage() {
+  const { user } = useAuth();
+  const canImport = user?.role !== 'VIEWER';
   const establishmentsRef = useRef<HTMLInputElement>(null);
   const tarificationRef = useRef<HTMLInputElement>(null);
   const [result, setResult] = useState<Record<string, number> | null>(null);
@@ -67,13 +70,28 @@ export default function ImportsPage() {
     }
   };
 
+  if (!canImport) {
+    return (
+      <>
+        <PageHeader title="Exports" description="Telecharger les fichiers d injection SI" />
+        <div className="rounded-lg border border-slate-200 bg-white p-5">
+          <h3 className="mb-2 font-semibold text-slate-800">Exporter pour le SI</h3>
+          <p className="mb-4 text-sm text-slate-500">Generer template_injection_SI.xlsx</p>
+          <button className="btn-primary w-full" disabled={loading} onClick={() => void exportSi()}>
+            <Download size={18} /> Telecharger l export SI
+          </button>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
-      <PageHeader title="Imports / Export SI" description="Importer les fichiers Excel et générer le fichier d'injection SI" />
+      <PageHeader title="Imports / Export SI" description="Importer les fichiers Excel et generer le fichier d injection SI" />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="rounded-lg border border-slate-200 bg-white p-5">
-          <h3 className="mb-2 font-semibold text-slate-800">1. Importer les établissements</h3>
+          <h3 className="mb-2 font-semibold text-slate-800">1. Importer les etablissements</h3>
           <p className="mb-4 text-sm text-slate-500">Fichier : liste des etablissements.xlsx</p>
           <input ref={establishmentsRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => void importEstablishments(e.target.files?.[0])} />
           <button className="btn-secondary w-full" disabled={loading} onClick={() => establishmentsRef.current?.click()}>
@@ -92,9 +110,9 @@ export default function ImportsPage() {
 
         <div className="rounded-lg border border-slate-200 bg-white p-5">
           <h3 className="mb-2 font-semibold text-slate-800">3. Exporter pour le SI</h3>
-          <p className="mb-4 text-sm text-slate-500">Générer template_injection_SI.xlsx</p>
+          <p className="mb-4 text-sm text-slate-500">Generer template_injection_SI.xlsx</p>
           <button className="btn-primary w-full" disabled={loading} onClick={() => void exportSi()}>
-            <Download size={18} /> Télécharger l'export SI
+            <Download size={18} /> Telecharger l export SI
           </button>
         </div>
       </div>

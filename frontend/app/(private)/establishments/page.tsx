@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/modal';
 import { PageHeader } from '@/components/page-header';
+import { useAuth } from '@/hooks/use-auth';
 import { usePaginated } from '@/hooks/use-paginated';
 import { useRealtimeReload } from '@/hooks/use-realtime-reload';
 import { api } from '@/lib/api';
@@ -15,6 +16,8 @@ import type { Establishment } from '@/types';
 const empty = { businessName: '', rne: '', address: '', governorate: 'TUNIS', managerName: '', phone: '', email: '' };
 
 export default function EstablishmentsPage() {
+  const { user } = useAuth();
+  const canMutate = user?.role !== 'VIEWER';
   const list = usePaginated<Establishment>('/establishments');
   useRealtimeReload(['establishment'], list.reload);
   const [open, setOpen] = useState(false);
@@ -63,13 +66,13 @@ export default function EstablishmentsPage() {
     { accessorKey: 'governorate', header: 'Gouvernorat' },
     { accessorKey: 'managerName', header: 'Responsable' },
     { id: 'contracts', header: 'Contrats', cell: ({ row }) => row.original._count?.contracts ?? 0 },
-    { id: 'actions', header: 'Actions', cell: ({ row }) => <div className="flex gap-1"><button title="Modifier" className="btn-secondary !h-9 !px-2" onClick={() => begin(row.original)}><Pencil size={16} /></button><button title="Supprimer" className="btn-secondary !h-9 !px-2 text-red-600" onClick={() => remove(row.original.id)}><Trash2 size={16} /></button></div> },
+    { id: 'actions', header: 'Actions', cell: ({ row }) => canMutate ? <div className="flex gap-1"><button title="Modifier" className="btn-secondary !h-9 !px-2" onClick={() => begin(row.original)}><Pencil size={16} /></button><button title="Supprimer" className="btn-secondary !h-9 !px-2 text-red-600" onClick={() => remove(row.original.id)}><Trash2 size={16} /></button></div> : null },
   ], []);
 
   const set = (key: keyof typeof empty, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
   return <>
-    <PageHeader title="Etablissements" description="Organismes et entreprises assures" action={<button className="btn-primary" onClick={() => begin()}><Plus size={18} />Ajouter</button>} />
+    <PageHeader title="Etablissements" description="Organismes et entreprises assures" action={canMutate ? <button className="btn-primary" onClick={() => begin()}><Plus size={18} />Ajouter</button> : undefined} />
     <DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
     <Modal title={editing ? 'Modifier l etablissement' : 'Nouvel etablissement'} open={open} onClose={() => setOpen(false)}>
       <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">

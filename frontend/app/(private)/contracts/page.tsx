@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/modal';
 import { PageHeader } from '@/components/page-header';
+import { useAuth } from '@/hooks/use-auth';
 import { usePaginated } from '@/hooks/use-paginated';
 import { useRealtimeReload } from '@/hooks/use-realtime-reload';
 import { api } from '@/lib/api';
@@ -12,6 +13,8 @@ import type { Contract, EstablishmentForContract } from '@/types';
 
 const empty = { number: '', type: 'FLEET', startDate: '', endDate: '', status: 'ACTIVE', establishmentId: '' };
 export default function ContractsPage() {
+  const { user } = useAuth();
+  const canMutate = user?.role !== 'VIEWER';
   const list = usePaginated<Contract>('/contracts');
   useRealtimeReload(['contract', 'establishment'], () => { void list.reload(); void loadEstablishments(); });
   const [establishments, setEstablishments] = useState<EstablishmentForContract[]>([]);
@@ -33,10 +36,10 @@ export default function ContractsPage() {
     { accessorKey: 'type', header: 'Type' }, { accessorKey: 'status', header: 'Statut', cell: ({ row }) => <span className="rounded-sm bg-slate-100 px-2 py-1 text-xs font-semibold">{row.original.status}</span> },
     { accessorKey: 'endDate', header: 'Echeance', cell: ({ row }) => new Date(row.original.endDate).toLocaleDateString('fr-TN') },
     { id: 'vehicles', header: 'Vehicules', cell: ({ row }) => row.original._count?.vehicles ?? 0 },
-    { id: 'actions', header: 'Actions', cell: ({ row }) => <div className="flex gap-1"><button title="Renouveler" className="btn-secondary !h-9 !px-2 text-emerald-700" onClick={() => begin(row.original, true)}><RefreshCw size={16} /></button><button title="Modifier" className="btn-secondary !h-9 !px-2" onClick={() => begin(row.original)}><Pencil size={16} /></button><button title="Supprimer" className="btn-secondary !h-9 !px-2 text-red-600" onClick={() => remove(row.original.id)}><Trash2 size={16} /></button></div> },
+    { id: 'actions', header: 'Actions', cell: ({ row }) => canMutate ? <div className="flex gap-1"><button title="Renouveler" className="btn-secondary !h-9 !px-2 text-emerald-700" onClick={() => begin(row.original, true)}><RefreshCw size={16} /></button><button title="Modifier" className="btn-secondary !h-9 !px-2" onClick={() => begin(row.original)}><Pencil size={16} /></button><button title="Supprimer" className="btn-secondary !h-9 !px-2 text-red-600" onClick={() => remove(row.original.id)}><Trash2 size={16} /></button></div> : null },
   ], []);
   const set = (key: keyof typeof empty, value: string) => setForm((f) => ({ ...f, [key]: value }));
-  return <><PageHeader title="Contrats" description="Suivi des polices flotte et de leurs echeances" action={<button className="btn-primary" onClick={() => begin()}><Plus size={18}/>Ajouter</button>} /><DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
+  return <><PageHeader title="Contrats" description="Suivi des polices flotte et de leurs echeances" action={canMutate ? <button className="btn-primary" onClick={() => begin()}><Plus size={18}/>Ajouter</button> : undefined} /><DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
     <Modal title={renewing ? `Renouveler ${renewing.number}` : editing ? 'Modifier le contrat' : 'Nouveau contrat'} open={open} onClose={() => setOpen(false)}><form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
       <label><span className="label">Numero</span><input required minLength={3} maxLength={100} pattern="[A-Za-z0-9][A-Za-z0-9/_-]{2,99}" className="field" value={form.number} disabled={!!editing} onChange={(e) => set('number', e.target.value)} /></label>
       <label><span className="label">Type</span><select className="field" value={form.type} onChange={(e) => set('type', e.target.value)}>{['FLEET','INDIVIDUAL','TEMPORARY','OTHER'].map((v)=><option key={v}>{v}</option>)}</select></label>
