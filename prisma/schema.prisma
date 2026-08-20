@@ -72,6 +72,33 @@ enum ContractStatus {
   @@map("contract_status")
 }
 
+enum ContractAmendmentType {
+  VEHICLE_ADDITION
+  VEHICLE_REMOVAL
+  DATE_CHANGE
+  COVERAGE_CHANGE
+  OTHER
+
+  @@map("contract_amendment_type")
+}
+
+enum ContractAmendmentStatus {
+  DRAFT
+  ACTIVE
+  CANCELLED
+
+  @@map("contract_amendment_status")
+}
+
+enum GeneratedDocumentType {
+  ATTESTATION
+  GREEN_CARD
+  AMENDMENT
+  CONTRACT_SUMMARY
+
+  @@map("generated_document_type")
+}
+
 enum VehicleType {
   CAR
   VAN
@@ -98,12 +125,15 @@ model User {
   deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz(3)
 
   sessions              AuthSession[]
-  establishmentsCreated Establishment[] @relation("EstablishmentCreatedBy")
-  establishmentsUpdated Establishment[] @relation("EstablishmentUpdatedBy")
-  contractsCreated      Contract[]      @relation("ContractCreatedBy")
-  contractsUpdated      Contract[]      @relation("ContractUpdatedBy")
-  vehiclesCreated       Vehicle[]       @relation("VehicleCreatedBy")
-  vehiclesUpdated       Vehicle[]       @relation("VehicleUpdatedBy")
+  establishmentsCreated Establishment[]     @relation("EstablishmentCreatedBy")
+  establishmentsUpdated Establishment[]     @relation("EstablishmentUpdatedBy")
+  contractsCreated      Contract[]          @relation("ContractCreatedBy")
+  contractsUpdated      Contract[]          @relation("ContractUpdatedBy")
+  vehiclesCreated       Vehicle[]           @relation("VehicleCreatedBy")
+  vehiclesUpdated       Vehicle[]           @relation("VehicleUpdatedBy")
+  amendmentsCreated     ContractAmendment[] @relation("AmendmentCreatedBy")
+  amendmentsUpdated     ContractAmendment[] @relation("AmendmentUpdatedBy")
+  documentsGenerated    GeneratedDocument[] @relation("DocumentGeneratedBy")
   notifications         Notification[]
   auditLogs             AuditLog[]
 
@@ -173,12 +203,14 @@ model Contract {
   updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt          DateTime?      @map("deleted_at") @db.Timestamptz(3)
 
-  establishment    Establishment @relation(fields: [establishmentId], references: [id], onDelete: Restrict)
+  establishment    Establishment       @relation(fields: [establishmentId], references: [id], onDelete: Restrict)
   vehicles         Vehicle[]
-  previousContract Contract?     @relation("ContractRenewal", fields: [previousContractId], references: [id], onDelete: SetNull)
-  renewedContract  Contract?     @relation("ContractRenewal")
-  createdBy        User?         @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy        User?         @relation("ContractUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  amendments       ContractAmendment[]
+  documents        GeneratedDocument[]
+  previousContract Contract?           @relation("ContractRenewal", fields: [previousContractId], references: [id], onDelete: SetNull)
+  renewedContract    Contract?           @relation("ContractRenewal")
+  createdBy        User?               @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy        User?               @relation("ContractUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@index([establishmentId, status])
   @@index([status, endDate])
@@ -275,4 +307,47 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+model ContractAmendment {
+  id            String                   @id @default(uuid()) @db.Uuid
+  contractId    String                   @map("contract_id") @db.Uuid
+  type          ContractAmendmentType
+  status        ContractAmendmentStatus  @default(DRAFT)
+  effectiveDate DateTime?                @map("effective_date") @db.Date
+  description   String?                  @db.Text
+  vehicleIds    Json?                    @map("vehicle_ids")
+  createdById   String?                  @map("created_by_id") @db.Uuid
+  updatedById   String?                  @map("updated_by_id") @db.Uuid
+  createdAt     DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt     DateTime?                @map("deleted_at") @db.Timestamptz(3)
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  createdBy User?   @relation("AmendmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?   @relation("AmendmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  documents GeneratedDocument[]
+
+  @@index([contractId, status])
+  @@index([deletedAt])
+  @@map("contract_amendments")
+}
+
+model GeneratedDocument {
+  id            String               @id @default(uuid()) @db.Uuid
+  type          GeneratedDocumentType
+  contractId    String               @map("contract_id") @db.Uuid
+  amendmentId   String?              @map("amendment_id") @db.Uuid
+  fileName      String               @map("file_name") @db.VarChar(255)
+  filePath      String               @map("file_path") @db.VarChar(500)
+  generatedById String?              @map("generated_by_id") @db.Uuid
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  contract   Contract           @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  amendment  ContractAmendment? @relation(fields: [amendmentId], references: [id], onDelete: SetNull)
+  generatedBy User?             @relation("DocumentGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+
+  @@index([contractId, type])
+  @@index([createdAt])
+  @@map("generated_documents")
 }

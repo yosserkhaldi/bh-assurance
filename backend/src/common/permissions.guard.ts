@@ -16,6 +16,7 @@ export class PermissionsGuard implements CanActivate {
     ]);
     if (!required?.length) return true;
     const user = context.switchToHttp().getRequest<{ user: JwtUser }>().user;
+    if (!user) return true; // laisser JwtAuthHook gérer l'authentification avant la permission
     const userPermissions = ROLE_PERMISSIONS[user.role] ?? [];
     return required.some((permission) => userPermissions.includes(permission));
   }

@@ -10,8 +10,17 @@ export function useAuth() {
   useEffect(() => {
     const raw = localStorage.getItem('user');
     const token = localStorage.getItem('accessToken');
-    if (!raw || !token) router.replace('/login');
-    else setUser(JSON.parse(raw));
+    if (!raw || !token) {
+      router.replace('/login');
+      setReady(true);
+      return;
+    }
+    try {
+      setUser(JSON.parse(raw));
+    } catch {
+      localStorage.clear();
+      router.replace('/login');
+    }
     setReady(true);
   }, [router]);
   return { user, ready };

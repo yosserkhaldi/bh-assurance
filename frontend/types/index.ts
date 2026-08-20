@@ -17,3 +17,32 @@ export interface Vehicle {
   id: string; registrationNumber: string; make: string; model: string; year: number;
   chassisNumber: string; type: string; contractId: string; contract: Contract;
 }
+
+export type AmendmentType = 'VEHICLE_ADDITION' | 'VEHICLE_REMOVAL' | 'DATE_CHANGE' | 'COVERAGE_CHANGE' | 'OTHER';
+export type AmendmentStatus = 'DRAFT' | 'ACTIVE' | 'CANCELLED';
+
+export interface Amendment {
+  id: string;
+  contractId: string;
+  type: AmendmentType;
+  status: AmendmentStatus;
+  effectiveDate: string | null;
+  description: string | null;
+  vehicleIds: string[] | null;
+  createdAt: string;
+  documents?: GeneratedDocument[];
+}
+
+export type GeneratedDocumentType = 'ATTESTATION' | 'GREEN_CARD' | 'AMENDMENT' | 'CONTRACT_SUMMARY';
+
+export interface GeneratedDocument {
+  id: string;
+  type: GeneratedDocumentType;
+  contractId: string;
+  amendmentId: string | null;
+  fileName: string;
+  filePath: string;
+  createdAt: string;
+  generatedBy?: { id: string; firstName: string; lastName: string };
+  amendment?: Amendment;
+}

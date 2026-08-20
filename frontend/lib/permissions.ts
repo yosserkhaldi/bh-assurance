@@ -31,6 +31,9 @@ export enum Permission {
 
   NOTIFICATIONS_READ = 'NOTIFICATIONS_READ',
   NOTIFICATIONS_GENERATE = 'NOTIFICATIONS_GENERATE',
+
+  DOCUMENTS_READ = 'DOCUMENTS_READ',
+  DOCUMENTS_GENERATE = 'DOCUMENTS_GENERATE',
 }
 
 export type Role = 'ADMIN' | 'MANAGER' | 'VIEWER';
@@ -48,7 +51,12 @@ export function getRolePermissions(role?: Role | string | null): Permission[] {
           p !== Permission.REPORTS_EXPORT,
       );
     case 'VIEWER':
-      return all.filter((p) => p.endsWith('_READ') || p === Permission.NOTIFICATIONS_READ);
+      return all.filter(
+        (p) =>
+          p.endsWith('_READ') ||
+          p === Permission.NOTIFICATIONS_READ ||
+          p === Permission.DOCUMENTS_READ,
+      );
     default:
       return [];
   }

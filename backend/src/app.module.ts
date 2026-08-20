@@ -2,10 +2,12 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { AdvancedModule } from './advanced/advanced.module';
+import { AmendmentsModule } from './amendments/amendments.module';
 import { AuditInterceptor } from './common/audit.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { DocumentsModule } from './documents/documents.module';
 import { EstablishmentsModule } from './establishments/establishments.module';
 import { PermissionsGuard } from './common/permissions.guard';
 import { PrismaModule } from './prisma/prisma.module';
@@ -27,6 +29,8 @@ import { ImportsModule } from './imports/imports.module';
     AdvancedModule,
     ImportsModule,
     EventsModule,
+    AmendmentsModule,
+    DocumentsModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
