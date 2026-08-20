@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { LockKeyhole } from 'lucide-react';
+import { Eye, EyeOff, LockKeyhole } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -14,6 +14,7 @@ type FormData = z.infer<typeof schema>;
 export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema), defaultValues: { email: 'admin@bh-assurance.tn', password: 'Admin123!' },
   });
@@ -39,7 +40,21 @@ export default function LoginPage() {
         </div>
         <form onSubmit={handleSubmit(submit)} className="space-y-5">
           <div><label className="label" htmlFor="email">Adresse email</label><input id="email" className="field" {...register('email')} /><p className="mt-1 text-xs text-red-600">{errors.email?.message}</p></div>
-          <div><label className="label" htmlFor="password">Mot de passe</label><input id="password" type="password" className="field" {...register('password')} /><p className="mt-1 text-xs text-red-600">{errors.password?.message}</p></div>
+          <div>
+            <label className="label" htmlFor="password">Mot de passe</label>
+            <div className="relative">
+              <input id="password" type={showPassword ? 'text' : 'password'} className="field pr-10" {...register('password')} />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-red-600">{errors.password?.message}</p>
+          </div>
           {error && <p role="alert" className="bg-red-50 p-3 text-sm text-red-700">{error}</p>}
           <button className="btn-primary w-full" disabled={isSubmitting}>{isSubmitting ? 'Connexion...' : 'Se connecter'}</button>
         </form>
