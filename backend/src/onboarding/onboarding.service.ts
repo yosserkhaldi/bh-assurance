@@ -28,26 +28,59 @@ export class OnboardingService implements OnModuleInit {
   async createUser(dto: OnboardUserDto) {
     const temporaryPassword = this.generateSecurePassword();
     const passwordHash = await hash(temporaryPassword, 12);
+    const email = dto.email.toLowerCase();
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email.toLowerCase(),
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        role: dto.role,
-        status: 'ACTIVE',
-        forcePasswordChange: true,
-        passwordHash,
-      },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        status: true,
-      },
+    const existing = await this.prisma.user.findFirst({
+      where: { email },
     });
+
+    let user;
+    if (existing) {
+      if (!existing.deletedAt) {
+        throw new Error('Un compte avec cet email existe deja.');
+      }
+
+      user = await this.prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          role: dto.role,
+          status: 'ACTIVE',
+          forcePasswordChange: true,
+          passwordHash,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+        },
+      });
+    } else {
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          role: dto.role,
+          status: 'ACTIVE',
+          forcePasswordChange: true,
+          passwordHash,
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+        },
+      });
+    }
 
     await this.prisma.auditLog.create({
       data: {

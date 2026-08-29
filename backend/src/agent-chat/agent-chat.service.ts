@@ -175,9 +175,18 @@ export class AgentChatService {
       };
     } catch (err) {
       this.logger.error(`Onboarding error: ${(err as Error).message}`);
+      const msg = (err as Error).message;
+
+      if (msg.toLowerCase().includes('email') && msg.toLowerCase().includes('existe')) {
+        return {
+          type: 'error',
+          message: `Un compte avec l'email ${parsed.email} existe déjà. Vous pouvez utiliser une autre adresse ou demander la réactivation du compte existant.`,
+        };
+      }
+
       return {
         type: 'error',
-        message: `Erreur lors de la création du compte : ${(err as Error).message}`,
+        message: `Erreur lors de la création du compte : ${msg}`,
       };
     }
   }
