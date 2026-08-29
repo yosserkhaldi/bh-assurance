@@ -3,6 +3,15 @@ import { config } from './config';
 import { logger } from './logger';
 import { sendEmail } from './gmail-client';
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function buildWelcomeEmail(data: { firstName: string; email: string; role: string; frontendUrl: string; temporaryPassword: string }) {
   const subject = 'Votre compte BH Assurance a ete cree';
   const loginUrl = `${data.frontendUrl}/login`;
@@ -30,7 +39,7 @@ function buildWelcomeEmail(data: { firstName: string; email: string; role: strin
       <p>Voici vos identifiants de connexion :</p>
       <table style="border-collapse: collapse; margin: 16px 0;">
         <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Email</td><td style="padding: 8px; border: 1px solid #e2e8f0;">${data.email}</td></tr>
-        <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Mot de passe temporaire</td><td style="padding: 8px; border: 1px solid #e2e8f0; font-family: monospace;">${data.temporaryPassword}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Mot de passe temporaire</td><td style="padding: 8px; border: 1px solid #e2e8f0; font-family: monospace;">${escapeHtml(data.temporaryPassword)}</td></tr>
       </table>
       <p><a href="${loginUrl}" style="color: #00a6b2; text-decoration: none;">Se connecter et changer le mot de passe</a></p>
       <p><strong>Vous devrez changer ce mot de passe a votre premiere connexion.</strong></p>
