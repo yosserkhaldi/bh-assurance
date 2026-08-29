@@ -29,6 +29,15 @@ interface SearchResults {
   vehicles: Vehicle[];
 }
 
+interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
 function useDebounce<T>(value: T, delay = 300) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -50,6 +59,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    void api.get<AppNotification[]>('/notifications').then((r) => setNotifications(r.data));
+  }, [user]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const unreadCount = notifications.filter((n) => !n.readAt).length;
 
   useEffect(() => {
     if (debounced.trim().length < 2) {
@@ -163,7 +191,57 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <button className="relative grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50" title="Notifications"><Bell size={19} /><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-brandRed ring-2 ring-white" /></button>
+            <div className="relative" ref={notifRef}>
+              <button
+                onClick={() => setNotifOpen((o) => !o)}
+                className="relative grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+                title="Notifications"
+                aria-label="Notifications"
+                aria-expanded={notifOpen}
+              >
+                <Bell size={19} />
+                {unreadCount > 0 && (
+                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-brandRed ring-2 ring-white" />
+                )}
+              </button>
+              {notifOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                    <h3 className="text-sm font-semibold text-navy">Notifications</h3>
+                    <Link href="/notifications" onClick={() => setNotifOpen(false)} className="text-xs font-medium text-cyan hover:underline">
+                      Voir tout
+                    </Link>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="px-4 py-6 text-center text-sm text-slate-500">Aucune notification</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {notifications.slice(0, 6).map((n) => (
+                          <li
+                            key={n.id}
+                            className={`cursor-pointer px-4 py-3 transition hover:bg-slate-50 ${n.readAt ? 'opacity-60' : 'bg-blue-50/30'}`}
+                            onClick={() => {
+                              if (!n.readAt) {
+                                void api.patch(`/notifications/${n.id}/read`).then(() => {
+                                  setNotifications((prev) =>
+                                    prev.map((item) => (item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item)),
+                                  );
+                                });
+                              }
+                            }}
+                          >
+                            <p className="text-xs font-semibold text-navy">{n.title}</p>
+                            <p className="mt-0.5 line-clamp-2 text-xs leading-4 text-slate-600">{n.message}</p>
+                            <p className="mt-1 text-[10px] text-slate-400">{new Date(n.createdAt).toLocaleString('fr-TN')}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="hidden border-l border-slate-200 pl-4 text-right sm:block"><p className="text-sm font-semibold text-navy">{user.email}</p><p className="text-xs uppercase tracking-wide text-slate-500">{user.role}</p></div>
             <button onClick={logout} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 transition hover:bg-red-50 hover:text-red-600" title="Se deconnecter"><LogOut size={19} /></button>
           </div>
