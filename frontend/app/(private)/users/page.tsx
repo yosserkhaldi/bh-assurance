@@ -224,23 +224,21 @@ export default function UsersPage() {
     () => [
       {
         id: 'name',
-        header: 'Nom',
+        header: 'Collaborateur',
         cell: ({ row }) => (
-          <span className="font-semibold">
-            {row.original.firstName} {row.original.lastName}
-          </span>
+          <span className="flex items-center gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">{row.original.firstName?.[0]}{row.original.lastName?.[0]}</span><span className="font-semibold text-navy">{row.original.firstName} {row.original.lastName}</span></span>
         ),
       },
-      { accessorKey: 'email', header: 'Email' },
-      { accessorKey: 'role', header: 'Role' },
-      { accessorKey: 'status', header: 'Statut' },
+      { accessorKey: 'email', header: 'E-mail professionnel' },
+      { accessorKey: 'role', header: 'Rôle', cell: ({ row }) => <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">{row.original.role}</span> },
+      { accessorKey: 'status', header: 'Statut', cell: ({ row }) => <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">{row.original.status}</span> },
       {
         id: 'actions',
         header: 'Actions',
         cell: ({ row }) =>
           canDelete ? (
             <button
-              className="btn-secondary !h-9 !px-2 text-red-600"
+              className="icon-btn text-red-600 hover:bg-red-50"
               title="Desactiver"
               onClick={() => remove(row.original.id)}
             >

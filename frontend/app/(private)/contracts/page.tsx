@@ -148,11 +148,11 @@ export default function ContractsPage() {
   };
 
   const columns = useMemo<ColumnDef<Contract>[]>(() => [
-    { accessorKey: 'number', header: 'Numero', cell: ({ row }) => <span className="font-semibold">{row.original.number}</span> },
-    { id: 'establishment', header: 'Etablissement', cell: ({ row }) => row.original.establishment.businessName },
-    { accessorKey: 'type', header: 'Type' }, { accessorKey: 'status', header: 'Statut', cell: ({ row }) => <span className="rounded-sm bg-slate-100 px-2 py-1 text-xs font-semibold">{row.original.status}</span> },
-    { accessorKey: 'endDate', header: 'Echeance', cell: ({ row }) => new Date(row.original.endDate).toLocaleDateString('fr-TN') },
-    { id: 'vehicles', header: 'Vehicules', cell: ({ row }) => row.original._count?.vehicles ?? 0 },
+    { accessorKey: 'number', header: 'Numéro', cell: ({ row }) => <span className="font-semibold text-navy">{row.original.number}</span> },
+    { id: 'establishment', header: 'Établissement', cell: ({ row }) => row.original.establishment.businessName },
+    { accessorKey: 'type', header: 'Type' }, { accessorKey: 'status', header: 'Statut', cell: ({ row }) => <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${row.original.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : row.original.status === 'EXPIRED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>{row.original.status}</span> },
+    { accessorKey: 'endDate', header: 'Échéance', cell: ({ row }) => new Date(row.original.endDate).toLocaleDateString('fr-TN') },
+    { id: 'vehicles', header: 'Véhicules', cell: ({ row }) => row.original._count?.vehicles ?? 0 },
     { id: 'actions', header: 'Actions', cell: ({ row }) => (
       <div className="flex gap-1">
         {canDocumentsRead && <button title="Avenants" className="btn-secondary !h-9 !px-2 text-blue-700" onClick={() => openAmendments(row.original)}><Folder size={16} /></button>}
@@ -165,7 +165,7 @@ export default function ContractsPage() {
   ], [canUpdate, canDelete, canRenew, canDocumentsRead, remove, openAmendments, openDocuments]);
   const set = (key: keyof typeof empty, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
-  return <><PageHeader title="Contrats" description="Suivi des polices flotte et de leurs echeances" action={canCreate ? <button className="btn-primary" onClick={() => begin()}><Plus size={18}/>Ajouter</button> : undefined} /><DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
+  return <><PageHeader title="Contrats" description="Suivi des polices flotte et de leurs échéances" action={canCreate ? <button className="btn-primary" onClick={() => begin()}><Plus size={18}/>Ajouter un contrat</button> : undefined} /><DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
     <Modal title={renewing ? `Renouveler ${renewing.number}` : editing ? 'Modifier le contrat' : 'Nouveau contrat'} open={open} onClose={() => setOpen(false)}><form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
       <label><span className="label">Numero</span><input required minLength={3} maxLength={100} pattern="[A-Za-z0-9][A-Za-z0-9/_-]{2,99}" className="field" value={form.number} disabled={!!editing} onChange={(e) => set('number', e.target.value)} /></label>
       <label><span className="label">Type</span><select className="field" value={form.type} onChange={(e) => set('type', e.target.value)}>{['FLEET','INDIVIDUAL','TEMPORARY','OTHER'].map((v)=><option key={v}>{v}</option>)}</select></label>

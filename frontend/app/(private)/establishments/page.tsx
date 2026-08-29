@@ -69,13 +69,14 @@ export default function EstablishmentsPage() {
     { accessorKey: 'governorate', header: 'Gouvernorat' },
     { accessorKey: 'managerName', header: 'Responsable' },
     { id: 'contracts', header: 'Contrats', cell: ({ row }) => row.original._count?.contracts ?? 0 },
-    { id: 'actions', header: 'Actions', cell: ({ row }) => (canUpdate || canDelete) ? <div className="flex gap-1">{canUpdate && <button title="Modifier" className="btn-secondary !h-9 !px-2" onClick={() => begin(row.original)}><Pencil size={16} /></button>}{canDelete && <button title="Supprimer" className="btn-secondary !h-9 !px-2 text-red-600" onClick={() => remove(row.original.id)}><Trash2 size={16} /></button>}</div> : null },
+    { accessorKey: 'phone', header: 'Téléphone' },
+    { id: 'actions', header: 'Actions', cell: ({ row }) => (canUpdate || canDelete) ? <div className="flex gap-1">{canUpdate && <button title="Modifier" className="icon-btn" onClick={() => begin(row.original)}><Pencil size={16} /></button>}{canDelete && <button title="Supprimer" className="icon-btn text-red-600 hover:bg-red-50" onClick={() => remove(row.original.id)}><Trash2 size={16} /></button>}</div> : null },
   ], [canUpdate, canDelete, remove]);
 
   const set = (key: keyof typeof empty, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
   return <>
-    <PageHeader title="Etablissements" description="Organismes et entreprises assures" action={canCreate ? <button className="btn-primary" onClick={() => begin()}><Plus size={18} />Ajouter</button> : undefined} />
+    <PageHeader title="Établissements" description="Organismes et entreprises assurés" action={canCreate ? <button className="btn-primary" onClick={() => begin()}><Plus size={18} />Ajouter un établissement</button> : undefined} />
     <DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
     <Modal title={editing ? 'Modifier l etablissement' : 'Nouvel etablissement'} open={open} onClose={() => setOpen(false)}>
       <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">

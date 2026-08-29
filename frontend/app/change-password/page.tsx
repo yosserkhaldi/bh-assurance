@@ -1,12 +1,13 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Eye, EyeOff, LockKeyhole } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, KeyRound, LockKeyhole } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm, UseFormRegister } from 'react-hook-form';
 import { z } from 'zod';
 import { api } from '@/lib/api';
+import { AuthLayout } from '@/components/auth-layout';
 
 const schema = z
   .object({
@@ -59,16 +60,12 @@ export default function ChangePasswordPage() {
   };
 
   return (
-    <main className="grid min-h-screen place-items-center bg-navy px-4">
-      <section className="w-full max-w-md border-t-4 border-cyan bg-white p-8 shadow-2xl">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="grid h-11 w-11 place-items-center bg-cyan text-white">
-            <LockKeyhole />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-navy">Changement de mot de passe</h1>
-            <p className="text-sm text-slate-500">Votre administrateur vous demande de choisir un nouveau mot de passe</p>
-          </div>
+    <AuthLayout>
+        <div className="mb-8">
+          <div className="mb-5 grid h-12 w-12 place-items-center rounded-xl bg-blue-50 text-navy"><KeyRound size={23}/></div>
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-brandRed">Sécurité du compte</p>
+          <h1 className="text-4xl font-bold tracking-tight text-navy">Créez votre nouveau mot de passe</h1>
+          <p className="mt-4 max-w-md text-sm leading-6 text-slate-600">Votre administrateur vous demande de sécuriser votre compte avant d’accéder à l’espace de travail.</p>
         </div>
         <form onSubmit={handleSubmit(submit)} className="space-y-5">
           <PasswordField
@@ -95,14 +92,13 @@ export default function ChangePasswordPage() {
             error={errors.confirmPassword?.message}
             register={register('confirmPassword')}
           />
-          {error && <p role="alert" className="bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-          {success && <p role="status" className="bg-green-50 p-3 text-sm text-green-700">{success}</p>}
-          <button className="btn-primary w-full" disabled={isSubmitting}>
+          {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+          {success && <p role="status" className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700"><CheckCircle2 size={18}/>{success}</p>}
+          <button className="btn-primary !h-12 w-full" disabled={isSubmitting}>
             {isSubmitting ? 'Modification...' : 'Changer le mot de passe'}
           </button>
         </form>
-      </section>
-    </main>
+    </AuthLayout>
   );
 }
 
@@ -125,17 +121,18 @@ function PasswordField({
     <div>
       <label className="label" htmlFor={id}>{label}</label>
       <div className="relative">
-        <input id={id} type={show ? 'text' : 'password'} className="field pr-10" {...register} />
+        <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+        <input id={id} type={show ? 'text' : 'password'} autoComplete={id === 'currentPassword' ? 'current-password' : 'new-password'} className="field pl-12 pr-12" {...register} />
         <button
           type="button"
           onClick={toggle}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+          className="absolute right-4 top-1/2 -translate-y-1/2 rounded text-slate-500 hover:text-navy"
           aria-label={show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
         >
           {show ? <EyeOff size={18} /> : <Eye size={18} />}
         </button>
       </div>
-      <p className="mt-1 text-xs text-red-600">{error}</p>
+      <p className="mt-1.5 min-h-4 text-xs text-red-600">{error}</p>
     </div>
   );
 }

@@ -4,18 +4,19 @@
 
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
-body { margin: 0; background: #f4f7f9; color: #172033; font-family: Arial, Helvetica, sans-serif; }
+body { margin: 0; background: #f6f8fb; color: #172033; font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; }
 button, input, select { font: inherit; }
 button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
-  outline: 3px solid rgba(0, 166, 178, .35);
+  outline: 3px solid rgba(23, 92, 211, .25);
   outline-offset: 2px;
 }
 @layer components {
-  .btn { @apply inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50; }
-  .btn-primary { @apply btn bg-cyan text-white hover:bg-[#008b96]; }
-  .btn-secondary { @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
+  .btn { @apply inline-flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply btn bg-brandRed text-white shadow-sm hover:bg-[#c9151c] hover:shadow-md; }
+  .btn-secondary { @apply btn border border-slate-300 bg-white text-navy hover:border-slate-400 hover:bg-slate-50; }
   .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
-  .field { @apply h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-cyan focus:outline-none; }
-  .label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
-  .panel { @apply border border-slate-200 bg-white; }
+  .field { @apply h-12 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-100; }
+  .label { @apply mb-2 block text-sm font-semibold text-navy; }
+  .panel { @apply rounded-xl border border-slate-200 bg-white shadow-panel; }
+  .icon-btn { @apply grid h-9 w-9 place-items-center rounded-lg text-slate-600 transition hover:bg-blue-50 hover:text-blue-700; }
 }

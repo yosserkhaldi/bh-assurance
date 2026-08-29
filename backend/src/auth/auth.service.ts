@@ -98,6 +98,23 @@ export class AuthService {
       data: { passwordHash: await hash(newPassword, 12), forcePasswordChange: false },
     });
 
+    // Notifier tous les administrateurs qu'un employé a changé son mot de passe
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', status: 'ACTIVE', id: { not: userId } },
+      select: { id: true },
+    });
+
+    if (admins.length > 0) {
+      await this.prisma.notification.createMany({
+        data: admins.map((admin) => ({
+          userId: admin.id,
+          title: 'Mot de passe modifie',
+          message: `${user.firstName} ${user.lastName} (${user.email}) a change son mot de passe.`,
+          type: 'INFO' as const,
+        })),
+      });
+    }
+
     return { message: 'Mot de passe modifie avec succes' };
   }
 

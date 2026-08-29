@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useCan } from '@/hooks/use-can';
 import { Permission } from '@/lib/permissions';
 import type { Establishment, Contract, Vehicle } from '@/types';
+import { BrandLogo } from '@/components/brand-logo';
 
 const links = [
   { href: '/dashboard', label: 'Tableau de bord', icon: ChartNoAxesCombined },
@@ -87,23 +88,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (!ready || !user) return <div className="grid min-h-screen place-items-center text-slate-500">Chargement...</div>;
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[250px_1fr]">
+    <div className="min-h-screen bg-surface lg:grid lg:grid-cols-[272px_1fr]">
       {open && <button aria-label="Fermer le menu" className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />}
-      <aside className={cn('fixed inset-y-0 left-0 z-40 w-[250px] bg-navy text-white transition-transform lg:static lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
-        <div className="flex h-16 items-center justify-between border-b border-white/10 px-5">
-          <Link href="/dashboard" className="font-bold">BH <span className="text-cyan">Assurance</span></Link>
-          <button className="lg:hidden" aria-label="Fermer" onClick={() => setOpen(false)}><X size={20} /></button>
+      <aside className={cn('fixed inset-y-0 left-0 z-40 flex w-[272px] flex-col bg-navy text-white shadow-xl transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
+        <div className="flex h-20 items-center justify-between border-b border-white/10 px-4">
+          <Link href="/dashboard" className="flex h-12 w-full max-w-[224px] items-center justify-center rounded-xl bg-white px-3 shadow-sm">
+            <BrandLogo className="w-full" />
+          </Link>
+          <button className="grid h-9 w-9 place-items-center rounded-lg text-white hover:bg-white/10 lg:hidden" aria-label="Fermer" onClick={() => setOpen(false)}><X size={20} /></button>
         </div>
-        <nav className="space-y-1 p-3">
+        <div className="px-5 pb-2 pt-6 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-200/70">Espace collaborateurs</div>
+        <nav className="flex-1 space-y-1 px-3 py-2">
           {links.filter((l) => !l.permission || can(l.permission)).map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} onClick={() => setOpen(false)} className={cn('flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-slate-300 hover:bg-white/10 hover:text-white', pathname.startsWith(href) && 'bg-cyan text-white')}>
+            <Link key={href} href={href} onClick={() => setOpen(false)} className={cn('relative flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium text-blue-100/80 transition hover:bg-white/10 hover:text-white', pathname.startsWith(href) && 'bg-white/10 text-white before:absolute before:-left-3 before:h-6 before:w-1 before:rounded-r-full before:bg-brandRed')}>
               <Icon size={19} />{label}
             </Link>
           ))}
         </nav>
+        <div className="border-t border-white/10 p-4 text-xs leading-5 text-blue-100/60">Portail interne sécurisé<br/>BH Assurance</div>
       </aside>
       <div className="min-w-0">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-6">
+        <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur lg:px-8">
           <button className="grid h-10 w-10 place-items-center lg:hidden" aria-label="Ouvrir le menu" onClick={() => setOpen(true)}><Menu /></button>
           <div ref={searchRef} className="relative hidden w-full max-w-md sm:block">
             <div className="relative">
@@ -113,11 +118,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
                 onFocus={() => setShowResults(true)}
                 placeholder="Rechercher un etablissement, contrat ou vehicule..."
-                className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-cyan focus:ring-1 focus:ring-cyan"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
               />
             </div>
             {showResults && query.trim().length >= 2 && (
-              <div className="absolute left-0 right-0 top-full mt-1 max-h-[70vh] overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
+              <div className="absolute left-0 right-0 top-full mt-2 max-h-[70vh] overflow-auto rounded-xl border border-slate-200 bg-white shadow-panel">
                 {loading && <p className="p-3 text-sm text-slate-500">Recherche...</p>}
                 {!loading && total === 0 && <p className="p-3 text-sm text-slate-500">Aucun resultat</p>}
                 {!loading && results && (
@@ -158,12 +163,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <button className="relative grid h-10 w-10 place-items-center rounded-md hover:bg-slate-100" title="Notifications"><Bell size={19} /><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" /></button>
-            <div className="hidden text-right sm:block"><p className="text-sm font-semibold">{user.email}</p><p className="text-xs text-slate-500">{user.role}</p></div>
-            <button onClick={logout} className="grid h-10 w-10 place-items-center rounded-md text-slate-600 hover:bg-red-50 hover:text-red-600" title="Se deconnecter"><LogOut size={19} /></button>
+            <button className="relative grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50" title="Notifications"><Bell size={19} /><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-brandRed ring-2 ring-white" /></button>
+            <div className="hidden border-l border-slate-200 pl-4 text-right sm:block"><p className="text-sm font-semibold text-navy">{user.email}</p><p className="text-xs uppercase tracking-wide text-slate-500">{user.role}</p></div>
+            <button onClick={logout} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 transition hover:bg-red-50 hover:text-red-600" title="Se deconnecter"><LogOut size={19} /></button>
           </div>
         </header>
-        <main className="p-4 lg:p-6">{children}</main>
+        <main className="mx-auto w-full max-w-[1500px] p-4 lg:p-8">{children}</main>
       </div>
     </div>
   );

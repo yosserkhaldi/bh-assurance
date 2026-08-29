@@ -1,6 +1,6 @@
 'use client';
 
-import { Download, Upload } from 'lucide-react';
+import { Download, FileSpreadsheet, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { useCan } from '@/hooks/use-can';
@@ -78,38 +78,32 @@ export default function ImportsPage() {
 
   return (
     <>
-      <PageHeader title="Imports / Export SI" description="Importer les fichiers Excel et generer le fichier d injection SI" />
+      <PageHeader title="Imports / Export SI" description="Importer les fichiers Excel et générer le fichier d’injection SI" />
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="panel grid overflow-hidden lg:grid-cols-3 lg:divide-x lg:divide-slate-200">
         {canImportEstablishments && (
-          <div className="rounded-lg border border-slate-200 bg-white p-5">
-            <h3 className="mb-2 font-semibold text-slate-800">1. Importer les etablissements</h3>
-            <p className="mb-4 text-sm text-slate-500">Fichier : liste des etablissements.xlsx</p>
+          <div className="p-6">
+            <div className="mb-5 flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-blue-600 text-sm font-bold text-white">1</span><h3 className="font-semibold text-navy">Importer les établissements</h3></div>
+            <p className="mb-4 text-sm text-slate-500">Fichier attendu : <strong>liste_des_etablissements.xlsx</strong></p>
             <input ref={establishmentsRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => void importEstablishments(e.target.files?.[0])} />
-            <button className="btn-secondary w-full" disabled={loading} onClick={() => establishmentsRef.current?.click()}>
-              <Upload size={18} /> Choisir le fichier
-            </button>
+            <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-5 text-center"><div><Upload className="mx-auto mb-3 text-navy" size={30}/><p className="mb-4 text-sm text-slate-600">Glissez-déposez votre fichier Excel ici</p><button className="btn-secondary" disabled={loading} onClick={() => establishmentsRef.current?.click()}>Choisir un fichier</button></div></div>
           </div>
         )}
 
         {canImportTarification && (
-          <div className="rounded-lg border border-slate-200 bg-white p-5">
-            <h3 className="mb-2 font-semibold text-slate-800">2. Importer la base tarifiaire</h3>
-            <p className="mb-4 text-sm text-slate-500">Fichier : tarification_template.xlsx</p>
+          <div className="p-6">
+            <div className="mb-5 flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-blue-600 text-sm font-bold text-white">2</span><h3 className="font-semibold text-navy">Importer la base tarifaire</h3></div>
+            <p className="mb-4 text-sm text-slate-500">Fichier attendu : <strong>tarification_template.xlsx</strong></p>
             <input ref={tarificationRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => void importTarification(e.target.files?.[0])} />
-            <button className="btn-secondary w-full" disabled={loading} onClick={() => tarificationRef.current?.click()}>
-              <Upload size={18} /> Choisir le fichier
-            </button>
+            <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-5 text-center"><div><Upload className="mx-auto mb-3 text-navy" size={30}/><p className="mb-4 text-sm text-slate-600">Glissez-déposez votre fichier Excel ici</p><button className="btn-secondary" disabled={loading} onClick={() => tarificationRef.current?.click()}>Choisir un fichier</button></div></div>
           </div>
         )}
 
         {canExportSi && (
-          <div className="rounded-lg border border-slate-200 bg-white p-5">
-            <h3 className="mb-2 font-semibold text-slate-800">3. Exporter pour le SI</h3>
-            <p className="mb-4 text-sm text-slate-500">Generer template_injection_SI.xlsx</p>
-            <button className="btn-primary w-full" disabled={loading} onClick={() => void exportSi()}>
-              <Download size={18} /> Telecharger l export SI
-            </button>
+          <div className="p-6">
+            <div className="mb-5 flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-blue-600 text-sm font-bold text-white">3</span><h3 className="font-semibold text-navy">Exporter pour le SI</h3></div>
+            <p className="text-sm leading-6 text-slate-500">Générez le fichier d’injection SI à partir des données validées dans le système.</p>
+            <div className="grid min-h-48 place-items-center p-5 text-center"><div><FileSpreadsheet className="mx-auto mb-5 text-navy" size={44}/><button className="btn-primary" disabled={loading} onClick={() => void exportSi()}><Download size={18} /> Générer le fichier</button></div></div>
           </div>
         )}
 
