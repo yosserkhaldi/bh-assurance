@@ -1,8 +1,8 @@
 'use client';
 
 import type { ColumnDef } from '@tanstack/react-table';
-import { Bot, CheckCircle, Copy, Plus, Trash2 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { Bot, CheckCircle, Copy, Plus, Send, Trash2, X } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/modal';
 import { PageHeader } from '@/components/page-header';
@@ -15,12 +15,27 @@ import type { User } from '@/types';
 const emptyManual = { email: '', password: '', firstName: '', lastName: '', role: 'VIEWER' };
 const emptyAgent = { email: '', firstName: '', lastName: '', role: 'MANAGER' as const };
 
+const WELCOME_MESSAGE =
+  "Bonjour ! Je peux créer un compte employé pour vous. Donnez-moi l'email, le prénom, le nom et le rôle (MANAGER ou VIEWER).";
+
 type AgentResult = {
   user: User;
   temporaryPassword: string;
   emailSent?: boolean;
   warning?: string;
 };
+
+type ChatMessage = {
+  role: 'user' | 'agent';
+  content: string;
+  temporaryPassword?: string;
+  isError?: boolean;
+};
+
+type ChatResponse =
+  | { type: 'talk'; message: string }
+  | { type: 'success'; message: string; temporaryPassword: string }
+  | { type: 'error'; message: string };
 
 export default function UsersPage() {
   const { can } = useCan();
@@ -39,6 +54,16 @@ export default function UsersPage() {
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentResult, setAgentResult] = useState<AgentResult | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Agent chat panel
+  const [chatOpen, setChatOpen] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: 'agent', content: WELCOME_MESSAGE },
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatCopied, setChatCopied] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const saveManual = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +101,48 @@ export default function UsersPage() {
     await navigator.clipboard.writeText(agentResult.temporaryPassword);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const sendChatMessage = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const text = chatInput.trim();
+    if (!text || chatLoading) return;
+
+    setMessages((prev) => [...prev, { role: 'user', content: text }]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const { data } = await api.post<ChatResponse>('/agent/chat', { message: text });
+      const agentMessage: ChatMessage = {
+        role: 'agent',
+        content: data.message,
+        isError: data.type === 'error',
+        temporaryPassword:
+          data.type === 'success' ? data.temporaryPassword : undefined,
+      };
+      setMessages((prev) => [...prev, agentMessage]);
+
+      if (data.type === 'success') {
+        await list.reload();
+      }
+    } catch (err) {
+      const message =
+        err && typeof err === 'object' && 'response' in err
+          ? (err.response as { data?: { message?: string } })?.data?.message ||
+            'Une erreur est survenue.'
+          : 'Une erreur est survenue.';
+      setMessages((prev) => [...prev, { role: 'agent', content: message, isError: true }]);
+    } finally {
+      setChatLoading(false);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    }
+  };
+
+  const copyChatPassword = async (password: string) => {
+    await navigator.clipboard.writeText(password);
+    setChatCopied(true);
+    setTimeout(() => setChatCopied(false), 2000);
   };
 
   const remove = useCallback(
@@ -141,6 +208,10 @@ export default function UsersPage() {
               <button className="btn-primary" onClick={() => setAgentOpen(true)}>
                 <Bot size={18} />
                 Creer un compte employe
+              </button>
+              <button className="btn-primary" onClick={() => setChatOpen(true)}>
+                <Bot size={18} />
+                Agent BH 🤖
               </button>
             </div>
           ) : undefined
@@ -313,6 +384,108 @@ export default function UsersPage() {
           </form>
         )}
       </Modal>
+
+      {/* Agent chat panel */}
+      {chatOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setChatOpen(false)}
+        >
+          <section
+            className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="flex items-center justify-between border-b p-4">
+              <div className="flex items-center gap-2">
+                <div className="grid h-8 w-8 place-items-center rounded-full bg-cyan text-white">
+                  <Bot size={18} />
+                </div>
+                <div>
+                  <h2 className="font-bold text-navy">Agent BH</h2>
+                  <p className="text-xs text-slate-500">Création de comptes employés</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setChatOpen(false)}
+                className="grid h-9 w-9 place-items-center rounded-md hover:bg-slate-100"
+                aria-label="Fermer"
+              >
+                <X size={20} />
+              </button>
+            </header>
+
+            <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              {messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${
+                      msg.role === 'user'
+                        ? 'rounded-br-none bg-cyan text-white'
+                        : `rounded-bl-none ${msg.isError ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-800'}`
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    {msg.temporaryPassword && (
+                      <div className="mt-3 rounded-md bg-white/90 p-2">
+                        <p className="mb-1 text-xs font-medium text-slate-600">
+                          Mot de passe temporaire
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-800">
+                            {msg.temporaryPassword}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => copyChatPassword(msg.temporaryPassword!)}
+                            className="grid h-7 w-7 place-items-center rounded hover:bg-slate-200"
+                            title="Copier"
+                          >
+                            {chatCopied ? <CheckCircle size={14} /> : <Copy size={14} />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl rounded-bl-none bg-slate-100 px-4 py-2 text-sm text-slate-600">
+                    L&apos;agent écrit…
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            <form onSubmit={sendChatMessage} className="border-t p-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Tapez votre message…"
+                  className="field flex-1"
+                  disabled={chatLoading}
+                />
+                <button
+                  type="submit"
+                  className="btn-primary !h-10 !w-10 !px-0"
+                  disabled={chatLoading || !chatInput.trim()}
+                  aria-label="Envoyer"
+                >
+                  <Send size={18} />
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </>
   );
 }

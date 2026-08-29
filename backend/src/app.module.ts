@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { AdvancedModule } from './advanced/advanced.module';
+import { AgentChatModule } from './agent-chat/agent-chat.module';
 import { AmendmentsModule } from './amendments/amendments.module';
 import { AuditInterceptor } from './common/audit.interceptor';
 import { AuthModule } from './auth/auth.module';
@@ -33,6 +34,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     AmendmentsModule,
     DocumentsModule,
     OnboardingModule,
+    AgentChatModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },

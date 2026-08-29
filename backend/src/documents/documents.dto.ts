@@ -1,5 +1,5 @@
 import { GeneratedDocumentType } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 
 export class DocumentQueryDto {
   @IsUUID()
