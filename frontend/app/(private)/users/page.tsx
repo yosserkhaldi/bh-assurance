@@ -1,18 +1,16 @@
 'use client';
 
 import type { ColumnDef } from '@tanstack/react-table';
-import { Bot, CheckCircle, Copy, MessageSquarePlus, Plus, Send, Trash2, X } from 'lucide-react';
+import { Bot, CheckCircle, Copy, MessageSquarePlus, Send, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DataTable } from '@/components/data-table';
-import { Modal } from '@/components/modal';
+
 import { PageHeader } from '@/components/page-header';
 import { useCan } from '@/hooks/use-can';
 import { usePaginated } from '@/hooks/use-paginated';
 import { api } from '@/lib/api';
 import { Permission } from '@/lib/permissions';
 import type { User } from '@/types';
-
-const emptyManual = { email: '', password: '', firstName: '', lastName: '', role: 'VIEWER' };
 
 const WELCOME_MESSAGE =
   "Bonjour ! Je peux créer un compte employé pour vous. Donnez-moi l'email, le prénom, le nom et le rôle (MANAGER ou VIEWER).";
@@ -83,10 +81,6 @@ export default function UsersPage() {
   const canDelete = can(Permission.USERS_DELETE);
 
   const list = usePaginated<User>('/users');
-
-  // Manual user creation modal
-  const [manualOpen, setManualOpen] = useState(false);
-  const [manualForm, setManualForm] = useState(emptyManual);
 
   // Agent chat panel
   const [chatOpen, setChatOpen] = useState(false);
@@ -168,14 +162,6 @@ export default function UsersPage() {
       }
       return next;
     });
-  };
-
-  const saveManual = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await api.post('/users', manualForm);
-    setManualOpen(false);
-    setManualForm(emptyManual);
-    await list.reload();
   };
 
   const sendChatMessage = async (e?: React.FormEvent) => {
@@ -266,9 +252,6 @@ export default function UsersPage() {
     [canDelete, remove],
   );
 
-  const updateManual = (key: keyof typeof emptyManual, value: string) =>
-    setManualForm((f) => ({ ...f, [key]: value }));
-
   return (
     <>
       <PageHeader
@@ -276,75 +259,14 @@ export default function UsersPage() {
         description="Comptes et niveaux d’acces"
         action={
           canCreate ? (
-            <div className="flex items-center gap-2">
-              <button className="btn-secondary" onClick={() => setManualOpen(true)}>
-                <Plus size={18} />
-                Ajouter
-              </button>
-              <button className="btn-primary" onClick={() => setChatOpen(true)}>
-                <Bot size={18} />
-                Agent BH 🤖
-              </button>
-            </div>
+            <button className="btn-primary" onClick={() => setChatOpen(true)}>
+              <Bot size={18} />
+              Agent BH 🤖
+            </button>
           ) : undefined
         }
       />
       <DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
-
-      {/* Manual creation modal */}
-      <Modal title="Nouvel utilisateur" open={manualOpen} onClose={() => setManualOpen(false)}>
-        <form onSubmit={saveManual} className="grid gap-4 sm:grid-cols-2">
-          {(['firstName', 'lastName', 'email', 'password'] as const).map((key) => (
-            <label key={key}>
-              <span className="label">
-                {{
-                  firstName: 'Prenom',
-                  lastName: 'Nom',
-                  email: 'Email',
-                  password: 'Mot de passe',
-                }[key]}
-              </span>
-              <input
-                required
-                type={key === 'password' ? 'password' : key === 'email' ? 'email' : 'text'}
-                minLength={key === 'password' ? 8 : 2}
-                maxLength={key === 'password' ? 72 : key === 'email' ? 255 : 100}
-                pattern={
-                  key === 'password'
-                    ? '(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).+'
-                    : undefined
-                }
-                title={
-                  key === 'password'
-                    ? 'Au moins 8 caracteres avec majuscule, minuscule, chiffre et caractere special'
-                    : undefined
-                }
-                className="field"
-                value={manualForm[key]}
-                onChange={(e) => updateManual(key, e.target.value)}
-              />
-            </label>
-          ))}
-          <label>
-            <span className="label">Role</span>
-            <select
-              className="field"
-              value={manualForm.role}
-              onChange={(e) => updateManual('role', e.target.value)}
-            >
-              {['ADMIN', 'MANAGER', 'VIEWER'].map((v) => (
-                <option key={v}>{v}</option>
-              ))}
-            </select>
-          </label>
-          <div className="flex justify-end gap-2 sm:col-span-2">
-            <button type="button" className="btn-secondary" onClick={() => setManualOpen(false)}>
-              Annuler
-            </button>
-            <button className="btn-primary">Creer</button>
-          </div>
-        </form>
-      </Modal>
 
       {/* Agent chat panel */}
       {chatOpen && (
