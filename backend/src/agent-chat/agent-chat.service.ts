@@ -58,7 +58,7 @@ export class AgentChatService {
   private buildPrompt(message: string): string {
     return [
       'Tu es un assistant de BH Assurance. Tu aides l\'administrateur à créer des comptes employés.',
-      'Réponds UNIQUEMENT avec un JSON valide ayant l\'un des deux formats suivants.',
+      'Réponds UNIQUEMENT avec un JSON valide, sans bloc markdown, sans texte avant ou après, ayant l\'un des deux formats suivants.',
       '',
       'Si la demande contient toutes les informations nécessaires (email, prénom, nom, rôle MANAGER ou VIEWER) :',
       '{',
@@ -81,9 +81,9 @@ export class AgentChatService {
 
   private async callGemini(userPrompt: string): Promise<string> {
     const apiKey = this.config.get<string>('GOOGLE_GEMINI_API_KEY');
-    const rawModel = this.config.get<string>('GEMINI_MODEL', 'gemini-1.5-flash-latest');
-    // `gemini-1.5-flash` seul n'est pas reconnu par l'API v1beta ; il faut le suffixe `-latest`.
-    const model = rawModel === 'gemini-1.5-flash' ? 'gemini-1.5-flash-latest' : rawModel;
+    const rawModel = this.config.get<string>('GEMINI_MODEL', 'gemini-3.5-flash');
+    // Les modèles 1.5.x ne sont plus reconnus par l'API Gemini ; on force un modèle valide.
+    const model = rawModel.startsWith('gemini-1.5') ? 'gemini-3.5-flash' : rawModel;
 
     if (!apiKey) {
       throw new BadRequestException('GOOGLE_GEMINI_API_KEY is not configured');
@@ -102,7 +102,7 @@ export class AgentChatService {
         ],
         generationConfig: {
           temperature: 0.4,
-          maxOutputTokens: 500,
+          maxOutputTokens: 1000,
         },
       }),
     });
@@ -118,8 +118,13 @@ export class AgentChatService {
 
   private parseAgentResult(raw: string): GeminiAgentResult {
     try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      const jsonString = jsonMatch ? jsonMatch[0] : raw;
+      // Supprime les blocs markdown ```json ... ``` parfois renvoyés par Gemini.
+      const cleaned = raw
+        .replace(/^```json\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      const jsonString = jsonMatch ? jsonMatch[0] : cleaned;
       const parsed = JSON.parse(jsonString) as GeminiAgentResult;
 
       const action = parsed.action as string;
@@ -130,7 +135,7 @@ export class AgentChatService {
       return parsed;
     } catch (err) {
       this.logger.error(`Agent response parsing error: ${(err as Error).message}`);
-      this.logger.debug(`Raw response: ${raw}`);
+      this.logger.warn(`Raw response: ${raw}`);
       return {
         action: 'talk',
         response: 'Je suis désolé, je n\'ai pas compris. Pouvez-vous reformuler ?',
