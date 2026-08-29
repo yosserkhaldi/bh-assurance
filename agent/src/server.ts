@@ -1,8 +1,44 @@
 import express, { Request, Response } from 'express';
 import { config } from './config';
 import { logger } from './logger';
-import { generateWelcomeEmail } from './llm-client';
 import { sendEmail } from './gmail-client';
+
+function buildWelcomeEmail(data: { firstName: string; email: string; role: string; frontendUrl: string; temporaryPassword: string }) {
+  const subject = 'Votre compte BH Assurance a ete cree';
+  const loginUrl = `${data.frontendUrl}/login`;
+  const text = [
+    `Bienvenue chez BH Assurance, ${data.firstName} !`,
+    '',
+    `Votre compte employe (${data.role}) a ete cree avec succes.`,
+    '',
+    'Voici vos identifiants de connexion :',
+    '',
+    `Email : ${data.email}`,
+    `Mot de passe temporaire : ${data.temporaryPassword}`,
+    '',
+    `Lien de connexion : ${loginUrl}`,
+    '',
+    'Vous devrez changer ce mot de passe a votre premiere connexion.',
+    '',
+    'Cordialement,',
+    'Equipe BH Assurance',
+  ].join('\n');
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #172033;">
+      <h2 style="color: #00a6b2;">Bienvenue chez BH Assurance, ${data.firstName} !</h2>
+      <p>Votre compte employe (${data.role}) a ete cree avec succes.</p>
+      <p>Voici vos identifiants de connexion :</p>
+      <table style="border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Email</td><td style="padding: 8px; border: 1px solid #e2e8f0;">${data.email}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Mot de passe temporaire</td><td style="padding: 8px; border: 1px solid #e2e8f0; font-family: monospace;">${data.temporaryPassword}</td></tr>
+      </table>
+      <p><a href="${loginUrl}" style="color: #00a6b2; text-decoration: none;">Se connecter et changer le mot de passe</a></p>
+      <p><strong>Vous devrez changer ce mot de passe a votre premiere connexion.</strong></p>
+      <p>Cordialement,<br/>Equipe BH Assurance</p>
+    </div>
+  `;
+  return { subject, text, html };
+}
 
 interface OnboardBody {
   email: string;
@@ -46,38 +82,15 @@ export function startServer(): void {
     }
 
     try {
-      const welcome = await generateWelcomeEmail({
+      const welcome = buildWelcomeEmail({
         firstName,
         email,
         role: normalizedRole,
         frontendUrl: frontendUrl || config.frontendUrl,
+        temporaryPassword,
       });
 
-      const loginUrlText = `${(frontendUrl || config.frontendUrl)}/login`;
-      const credentialsText = [
-        '',
-        'Voici vos identifiants de connexion :',
-        '',
-        `Email : ${email}`,
-        `Mot de passe temporaire : ${temporaryPassword}`,
-        '',
-        `Lien de connexion : ${loginUrlText}`,
-        '',
-        'Vous devrez changer ce mot de passe a votre premiere connexion.',
-      ].join('\n');
-
-      const loginUrl = `${frontendUrl || config.frontendUrl}/login`;
-      const credentialsHtml = `
-        <p>Voici vos identifiants de connexion :</p>
-        <table style="border-collapse: collapse; margin: 16px 0;">
-          <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Email</td><td style="padding: 8px; border: 1px solid #e2e8f0;">${email}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Mot de passe temporaire</td><td style="padding: 8px; border: 1px solid #e2e8f0; font-family: monospace;">${temporaryPassword}</td></tr>
-        </table>
-        <p><a href="${loginUrl}" style="color: #00a6b2; text-decoration: none;">Se connecter et changer le mot de passe</a></p>
-        <p><strong>Vous devrez changer ce mot de passe a votre premiere connexion.</strong></p>
-      `;
-
-      await sendEmail(email, welcome.subject, `${welcome.text}\n${credentialsText}`, `${welcome.html}\n${credentialsHtml}`);
+      await sendEmail(email, welcome.subject, welcome.text, welcome.html);
       logger.info(`Sent onboarding email to ${email} (${normalizedRole})`);
       res.json({ sent: true });
     } catch (err) {
