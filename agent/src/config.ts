@@ -15,7 +15,8 @@ export const config = {
   agentEmail: getEnv('AGENT_EMAIL', 'onboarding@bh-assurance.tn'),
   backendUrl: getEnv('BACKEND_URL', 'http://backend:3001/api'),
   pollIntervalMs: Number(getEnv('POLL_INTERVAL_MS', '30000')),
-  agentMode: getEnv('AGENT_MODE', 'poll'),
+  agentMode: getEnv('AGENT_MODE', 'http'),
+  agentPort: Number(getEnv('AGENT_PORT', '3002')),
   frontendUrl: getEnv('FRONTEND_URL', 'http://localhost:3000'),
 };
 

@@ -24,6 +24,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change_me_in_production_jwt}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_me_in_production_refresh}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      AGENT_URL: ${AGENT_URL:-http://agent:3002}
       AGENT_API_KEY: ${AGENT_API_KEY:-agent-api-key-change-me-in-production}
       PORT: 3001
     ports:
@@ -31,6 +32,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      agent:
+        condition: service_started
 
   agent:
     build:
@@ -40,9 +43,10 @@ services:
     env_file:
       - .env
     environment:
-      - BACKEND_URL=http://backend:3001/api
-    depends_on:
-      - backend
+      AGENT_PORT: 3002
+      AGENT_MODE: http
+    ports:
+      - "3002:3002"
     restart: unless-stopped
 
 volumes:

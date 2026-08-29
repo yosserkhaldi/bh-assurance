@@ -17,8 +17,11 @@ export class OnboardingService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   onModuleInit() {
+    if (!process.env.AGENT_URL) {
+      this.logger.warn('AGENT_URL environment variable is missing. The onboarding endpoint will create users but will not notify the email agent.');
+    }
     if (!process.env.AGENT_API_KEY) {
-      this.logger.warn('AGENT_API_KEY environment variable is missing. The onboarding endpoint will reject requests until it is set.');
+      this.logger.warn('AGENT_API_KEY environment variable is missing. Requests to the email agent will be rejected.');
     }
   }
 
@@ -58,7 +61,59 @@ export class OnboardingService implements OnModuleInit {
 
     this.logger.log(`Onboarded user ${user.email} with role ${user.role}`);
 
+    const agentWarning = await this.notifyAgent({
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      temporaryPassword,
+    });
+
+    if (agentWarning) {
+      return { user, temporaryPassword, warning: agentWarning };
+    }
+
     return { user, temporaryPassword };
+  }
+
+  private async notifyAgent(payload: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: string;
+    temporaryPassword: string;
+  }): Promise<string | undefined> {
+    const agentUrl = process.env.AGENT_URL;
+    if (!agentUrl) {
+      this.logger.warn('AGENT_URL not configured, skipping email agent notification');
+      return undefined;
+    }
+
+    try {
+      const response = await fetch(`${agentUrl}/onboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Agent-Api-Key': process.env.AGENT_API_KEY || '',
+        },
+        body: JSON.stringify({
+          ...payload,
+          frontendUrl: process.env.FRONTEND_URL,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        this.logger.warn(`Email agent returned ${response.status}: ${body}`);
+        return 'Email non envoye';
+      }
+
+      this.logger.log(`Email agent notified for ${payload.email}`);
+      return undefined;
+    } catch (err) {
+      this.logger.warn(`Email agent unreachable: ${(err as Error).message}`);
+      return undefined;
+    }
   }
 
   private generateSecurePassword(): string {

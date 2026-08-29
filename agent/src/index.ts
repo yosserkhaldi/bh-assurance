@@ -3,6 +3,7 @@ import { fetchUnreadEmails, markAsSeen, ParsedEmail, sendEmail } from './gmail-c
 import { logger } from './logger';
 import { parseOnboardingRequest } from './llm-client';
 import { createUser } from './onboarding-client';
+import { startServer } from './server';
 
 let running = true;
 
@@ -72,14 +73,7 @@ async function processEmail(email: ParsedEmail) {
   logger.info(`Onboarded ${response.user.email} (${response.user.role})`);
 }
 
-async function main() {
-  const missing = validateConfig();
-  if (missing.length) {
-    logger.error(`Missing required environment variables: ${missing.join(', ')}`);
-    logger.error('Please configure the agent variables in your .env file.');
-    process.exit(1);
-  }
-
+async function runPollLoop() {
   logger.info(`Agent started in ${config.agentMode} mode`);
   logger.info(`Polling interval: ${config.pollIntervalMs}ms`);
 
@@ -110,7 +104,21 @@ function shutdown(signal: string) {
   running = false;
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+async function main() {
+  const missing = validateConfig();
+  if (missing.length) {
+    logger.error(`Missing required environment variables: ${missing.join(', ')}`);
+    logger.error('Please configure the agent variables in your .env file.');
+    process.exit(1);
+  }
+
+  if (config.agentMode === 'poll') {
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    await runPollLoop();
+  } else {
+    startServer();
+  }
+}
 
 void main();
