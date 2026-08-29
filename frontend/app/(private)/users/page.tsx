@@ -130,6 +130,10 @@ export default function UsersPage() {
     });
   }, [messages, currentSessionId, currentUserId]);
 
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   const startNewConversation = () => {
     const id = generateSessionId();
     setCurrentSessionId(id);
@@ -138,18 +142,13 @@ export default function UsersPage() {
   };
 
   const selectConversation = (id: string) => {
-    if (id !== currentSessionId) {
-      setCurrentSessionId(id);
-    }
-  };
-
-  useEffect(() => {
-    if (!currentSessionId) return;
-    const conv = conversations.find((c) => c.id === currentSessionId);
+    if (id === currentSessionId) return;
+    setCurrentSessionId(id);
+    const conv = conversations.find((c) => c.id === id);
     if (conv) {
       setMessages([...conv.messages]);
     }
-  }, [currentSessionId, conversations]);
+  };
 
   const deleteConversation = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -157,11 +156,11 @@ export default function UsersPage() {
     setConversations((prev) => {
       const next = prev.filter((c) => c.id !== id);
       saveConversations(currentUserId, next);
-      if (currentSessionId === id) {
-        startNewConversation();
-      }
       return next;
     });
+    if (currentSessionId === id) {
+      startNewConversation();
+    }
   };
 
   const sendChatMessage = async (e?: React.FormEvent) => {
