@@ -1,6 +1,6 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
-import { Observable, tap } from 'rxjs';
+import { map, Observable } from 'rxjs';
 import { JwtUser } from './current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -21,7 +21,7 @@ export class AuditInterceptor implements NestInterceptor {
     if (!action || !request.user || request.path.includes('/audit-logs')) return next.handle();
 
     return next.handle().pipe(
-      tap((result: any) => {
+      map((result: any) => {
         const rawEntity = request.path.split('/').filter(Boolean)[1] ?? 'unknown';
         const entity = this.formatEntity(rawEntity);
         const resultId = result?.id ?? result?.[result.length - 1]?.id;
@@ -29,7 +29,7 @@ export class AuditInterceptor implements NestInterceptor {
         const entityId = resultId ?? paramId;
         const description = this.buildDescription(action, entity, entityId, request.body);
 
-        void this.prisma.auditLog.create({
+        this.prisma.auditLog.create({
           data: {
             userId: request.user!.sub,
             action,
@@ -38,7 +38,8 @@ export class AuditInterceptor implements NestInterceptor {
             description,
             ipAddress: request.ip,
           },
-        });
+        }).catch((err) => console.error('[AUDIT ERROR]', err));
+        return result;
       }),
     );
   }
