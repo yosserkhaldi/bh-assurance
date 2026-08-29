@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../common/permissions.guard';
 import { Permissions } from '../common/permissions.decorator';
 import { Permission } from '../common/permissions';
+import { CurrentUser, JwtUser } from '../common/current-user.decorator';
 import { OnboardingService } from './onboarding.service';
 import { OnboardUserDto } from './onboarding.dto';
 
@@ -15,7 +16,7 @@ export class OnboardingController {
   constructor(private readonly onboarding: OnboardingService) {}
 
   @Post()
-  onboard(@Body() dto: OnboardUserDto) {
-    return this.onboarding.createUser(dto);
+  onboard(@Body() dto: OnboardUserDto, @CurrentUser() user: JwtUser) {
+    return this.onboarding.createUser(dto, user.sub);
   }
 }

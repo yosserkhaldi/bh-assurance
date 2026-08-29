@@ -4,7 +4,9 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { AuditInterceptor } from './common/audit.interceptor';
 import { HttpExceptionFilter } from './common/http-exception.filter';
+import { PrismaService } from './prisma/prisma.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -19,6 +21,7 @@ async function bootstrap() {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
   app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalInterceptors(new AuditInterceptor(app.get(PrismaService)));
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('BH Assurance API')

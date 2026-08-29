@@ -89,12 +89,15 @@ export class AgentChatService {
         return { sessionId: sid, type: 'talk', message: reply };
       }
 
-      const result = await this.onboarding.createUser({
-        email: state.email.toLowerCase(),
-        firstName: state.firstName,
-        lastName: state.lastName,
-        role: normalizedRole,
-      });
+      const result = await this.onboarding.createUser(
+        {
+          email: state.email.toLowerCase(),
+          firstName: state.firstName,
+          lastName: state.lastName,
+          role: normalizedRole,
+        },
+        userId,
+      );
 
       const reply = `Compte cree pour ${result.user.firstName} ${result.user.lastName}. Email envoye a ${result.user.email}. Mot de passe temporaire : ${result.temporaryPassword}`;
       history.push({ role: 'agent', content: reply });

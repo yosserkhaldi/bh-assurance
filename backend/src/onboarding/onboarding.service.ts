@@ -25,7 +25,7 @@ export class OnboardingService implements OnModuleInit {
     }
   }
 
-  async createUser(dto: OnboardUserDto) {
+  async createUser(dto: OnboardUserDto, performedById?: string) {
     const temporaryPassword = this.generateSecurePassword();
     const passwordHash = await hash(temporaryPassword, 12);
     const email = dto.email.toLowerCase();
@@ -84,10 +84,11 @@ export class OnboardingService implements OnModuleInit {
 
     await this.prisma.auditLog.create({
       data: {
+        userId: performedById,
         action: AuditAction.CREATE,
         entity: 'User',
         entityId: user.id,
-        description: `Created user via onboarding agent: ${user.email}`,
+        description: `Creation utilisateur: ${user.firstName} ${user.lastName} (${user.email})`,
         metadata: { role: user.role },
       },
     });
