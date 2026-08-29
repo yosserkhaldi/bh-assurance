@@ -37,6 +37,12 @@ export class AgentChatService {
 
   async chat(message: string) {
     try {
+      const local = this.tryLocalParse(message);
+
+      if (local && local.action === 'onboard') {
+        return this.handleOnboard(local);
+      }
+
       const prompt = this.buildPrompt(message);
       const raw = await this.callGemini(prompt);
       const parsed = this.parseAgentResult(raw);
@@ -53,6 +59,45 @@ export class AgentChatService {
         message: 'L\'agent de création de compte est momentanément indisponible. Veuillez réessayer plus tard.',
       };
     }
+  }
+
+  private tryLocalParse(message: string): GeminiAgentResult | undefined {
+    const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i;
+    const roleRegex = /\b(MANAGER|VIEWER)\b/i;
+    const emailMatch = message.match(emailRegex);
+    const roleMatch = message.match(roleRegex);
+
+    if (!emailMatch || !roleMatch) {
+      return undefined;
+    }
+
+    const email = emailMatch[1].toLowerCase();
+    const role = roleMatch[1].toUpperCase();
+
+    // Essaie d'extraire "prenom nom" avant ou apres le mot "pour".
+    // Exemples supportes :
+    //   "crée un compte pour Yosser Khaldi avec email ... manager"
+    //   "Yosser Khaldi, email ..., role MANAGER"
+    const withoutEmail = message.replace(emailMatch[0], '');
+    const pourMatch = withoutEmail.match(/pour\s+([A-Za-zÀ-ÿ\-\s]+?)(?:\s+(?:avec|email|rôle|role|manager|viewer|,)\b|$)/i);
+    const namePart = pourMatch ? pourMatch[1] : withoutEmail;
+    const cleanName = namePart.replace(/\b(avec|email|rôle|role|manager|viewer)\b/gi, '').replace(/[,;:]/g, ' ').trim();
+    const nameTokens = cleanName.split(/\s+/).filter(Boolean);
+
+    if (nameTokens.length < 2) {
+      return undefined;
+    }
+
+    const firstName = nameTokens[0];
+    const lastName = nameTokens.slice(1).join(' ');
+
+    return {
+      action: 'onboard',
+      email,
+      firstName,
+      lastName,
+      role,
+    };
   }
 
   private buildPrompt(message: string): string {
