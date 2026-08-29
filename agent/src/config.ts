@@ -8,7 +8,7 @@ function getEnv(name: string, fallback?: string): string {
 
 export const config = {
   googleGeminiApiKey: getEnv('GOOGLE_GEMINI_API_KEY'),
-  geminiModel: getEnv('GEMINI_MODEL', 'gemini-1.5-flash'),
+  geminiModel: getEnv('GEMINI_MODEL', 'gemini-1.5-flash-latest'),
   agentApiKey: getEnv('AGENT_API_KEY'),
   gmailUser: getEnv('GMAIL_USER'),
   gmailAppPassword: getEnv('GMAIL_APP_PASSWORD'),

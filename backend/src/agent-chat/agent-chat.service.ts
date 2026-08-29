@@ -81,9 +81,9 @@ export class AgentChatService {
 
   private async callGemini(userPrompt: string): Promise<string> {
     const apiKey = this.config.get<string>('GOOGLE_GEMINI_API_KEY');
-    const rawModel = this.config.get<string>('GEMINI_MODEL', 'gemini-1.5-flash');
-    // Le suffixe `-latest` n'est pas reconnu pour gemini-1.5-flash par l'API v1beta.
-    const model = rawModel === 'gemini-1.5-flash-latest' ? 'gemini-1.5-flash' : rawModel;
+    const rawModel = this.config.get<string>('GEMINI_MODEL', 'gemini-1.5-flash-latest');
+    // `gemini-1.5-flash` seul n'est pas reconnu par l'API v1beta ; il faut le suffixe `-latest`.
+    const model = rawModel === 'gemini-1.5-flash' ? 'gemini-1.5-flash-latest' : rawModel;
 
     if (!apiKey) {
       throw new BadRequestException('GOOGLE_GEMINI_API_KEY is not configured');
