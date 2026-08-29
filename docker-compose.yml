@@ -24,12 +24,26 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change_me_in_production_jwt}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_me_in_production_refresh}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      AGENT_API_KEY: ${AGENT_API_KEY:-agent-api-key-change-me-in-production}
       PORT: 3001
     ports:
       - "3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
+
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    container_name: bh-assurance-agent-1
+    env_file:
+      - .env
+    environment:
+      - BACKEND_URL=http://backend:3001/api
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes:
   postgres_data:

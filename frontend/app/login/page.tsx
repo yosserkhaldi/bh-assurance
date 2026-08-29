@@ -25,7 +25,7 @@ export default function LoginPage() {
       localStorage.setItem('accessToken', data.accessToken);
       localStorage.setItem('refreshToken', data.refreshToken);
       localStorage.setItem('user', JSON.stringify(data.user));
-      router.replace('/dashboard');
+      router.replace(data.user.requiresPasswordChange ? '/change-password' : '/dashboard');
     } catch (e) {
       const err = e as { response?: { data?: { message?: string } } };
       setError(err.response?.data?.message ?? 'Connexion impossible');

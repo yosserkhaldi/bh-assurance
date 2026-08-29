@@ -8,6 +8,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change_me_in_production_jwt}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_me_in_production_refresh}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      AGENT_API_KEY: ${AGENT_API_KEY:-agent-api-key-change-me-in-production}
       PORT: 3001
       NODE_ENV: development
       CHOKIDAR_USEPOLLING: "true"
@@ -44,3 +45,16 @@ services:
     depends_on:
       - backend
     command: ["npm", "run", "dev", "-w", "frontend", "--", "--hostname", "0.0.0.0"]
+
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    container_name: bh-assurance-agent-1
+    env_file:
+      - .env
+    environment:
+      - BACKEND_URL=http://backend:3001/api
+    depends_on:
+      - backend
+    restart: unless-stopped

@@ -15,6 +15,7 @@ import { UsersModule } from './users/users.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { EventsModule } from './events/events.module';
 import { ImportsModule } from './imports/imports.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ImportsModule } from './imports/imports.module';
     EventsModule,
     AmendmentsModule,
     DocumentsModule,
+    OnboardingModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },

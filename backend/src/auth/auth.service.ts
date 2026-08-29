@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { compare, hash } from 'bcrypt';
@@ -77,7 +77,28 @@ export class AuthService {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     });
-    return { accessToken, refreshToken, user: { id: userId, email, role } };
+    const dbUser = await this.prisma.user.findUnique({ where: { id: userId }, select: { forcePasswordChange: true } });
+    return { accessToken, refreshToken, user: { id: userId, email, role, requiresPasswordChange: dbUser?.forcePasswordChange ?? false } };
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const complexity = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/;
+    if (!complexity.test(newPassword) || newPassword.length < 8) {
+      throw new BadRequestException('Le nouveau mot de passe doit contenir au moins 8 caracteres, une majuscule, une minuscule, un chiffre et un caractere special');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Utilisateur introuvable');
+
+    const valid = await compare(currentPassword, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Mot de passe actuel incorrect');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await hash(newPassword, 12), forcePasswordChange: false },
+    });
+
+    return { message: 'Mot de passe modifie avec succes' };
   }
 
   private async findMatchingSession(

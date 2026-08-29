@@ -70,6 +70,7 @@ describe('AuthService', () => {
       passwordHash,
       role: 'ADMIN',
       status: 'ACTIVE',
+      forcePasswordChange: false,
     } as any;
 
     jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(user);
@@ -80,7 +81,7 @@ describe('AuthService', () => {
 
     expect(result.accessToken).toBeDefined();
     expect(result.refreshToken).toBeDefined();
-    expect(result.user).toEqual({ id: user.id, email: user.email, role: user.role });
+    expect(result.user).toEqual({ id: user.id, email: user.email, role: user.role, requiresPasswordChange: false });
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: user.id },
       data: { lastLoginAt: expect.any(Date) },

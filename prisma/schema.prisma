@@ -119,6 +119,7 @@ model User {
   lastName     String     @map("last_name") @db.VarChar(100)
   role         UserRole   @default(VIEWER)
   status       UserStatus @default(ACTIVE)
+  forcePasswordChange Boolean @default(false) @map("force_password_change")
   lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(3)
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
