@@ -26,108 +26,181 @@ interface GeminiTalkResult {
 
 type GeminiAgentResult = GeminiOnboardResult | GeminiTalkResult;
 
+interface SessionState {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  role?: string;
+}
+
+interface ChatMessage {
+  role: 'user' | 'agent';
+  content: string;
+}
+
+function generateSessionId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function normalizeRole(role?: string): 'MANAGER' | 'VIEWER' | undefined {
+  const r = role?.toUpperCase();
+  if (r === 'MANAGER' || r === 'VIEWER') return r;
+  return undefined;
+}
+
 @Injectable()
 export class AgentChatService {
   private readonly logger = new Logger(AgentChatService.name);
+  private readonly sessions = new Map<string, SessionState>();
+  private readonly histories = new Map<string, ChatMessage[]>();
 
   constructor(
     private readonly config: ConfigService,
     private readonly onboarding: OnboardingService,
   ) {}
 
-  async chat(message: string) {
+  async chat(userId: string, sessionId: string | undefined, message: string) {
+    const sid = sessionId || generateSessionId();
+    const key = `${userId}:${sid}`;
+
+    let state = this.sessions.get(key) || {};
+    let history = this.histories.get(key) || [];
+
+    history.push({ role: 'user', content: message });
+    this.histories.set(key, history);
+
     try {
-      const local = this.tryLocalParse(message);
+      const extracted = this.extractFields(message);
+      state = this.mergeState(state, extracted);
+      this.sessions.set(key, state);
 
-      if (local && local.action === 'onboard') {
-        return this.handleOnboard(local);
+      const missing = this.getMissingFields(state);
+      if (missing.length > 0) {
+        const reply = this.askForMissing(missing, state);
+        history.push({ role: 'agent', content: reply });
+        return { sessionId: sid, type: 'talk', message: reply };
       }
 
-      const prompt = this.buildPrompt(message);
-      const raw = await this.callGemini(prompt);
-      const parsed = this.parseAgentResult(raw);
-
-      if (parsed.action === 'onboard') {
-        return this.handleOnboard(parsed);
+      const normalizedRole = normalizeRole(state.role);
+      if (!state.email || !state.firstName || !state.lastName || !normalizedRole) {
+        const reply = 'Je suis desole, je n\'ai pas compris. Pouvez-vous reformuler ?';
+        history.push({ role: 'agent', content: reply });
+        return { sessionId: sid, type: 'talk', message: reply };
       }
 
-      return { type: 'talk', message: parsed.response };
+      const result = await this.onboarding.createUser({
+        email: state.email.toLowerCase(),
+        firstName: state.firstName,
+        lastName: state.lastName,
+        role: normalizedRole,
+      });
+
+      const reply = `Compte cree pour ${result.user.firstName} ${result.user.lastName}. Email envoye a ${result.user.email}. Mot de passe temporaire : ${result.temporaryPassword}`;
+      history.push({ role: 'agent', content: reply });
+
+      this.sessions.delete(key);
+
+      return {
+        sessionId: sid,
+        type: 'success',
+        message: reply,
+        temporaryPassword: result.temporaryPassword,
+      };
     } catch (err) {
       this.logger.error(`Agent chat error: ${(err as Error).message}`);
-      return {
-        type: 'error',
-        message: 'L\'agent de création de compte est momentanément indisponible. Veuillez réessayer plus tard.',
-      };
+      const reply = 'L\'agent de creation de compte est momentanement indisponible. Veuillez reessayer plus tard.';
+      history.push({ role: 'agent', content: reply });
+      return { sessionId: sid, type: 'error', message: reply };
     }
   }
 
-  private tryLocalParse(message: string): GeminiAgentResult | undefined {
-    const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i;
-    const roleRegex = /\b(MANAGER|VIEWER)\b/i;
-    const emailMatch = message.match(emailRegex);
-    const roleMatch = message.match(roleRegex);
-
-    if (!emailMatch || !roleMatch) {
-      return undefined;
-    }
-
-    const email = emailMatch[1].toLowerCase();
-    const role = roleMatch[1].toUpperCase();
-
-    // Essaie d'extraire "prenom nom" avant ou apres le mot "pour".
-    // Exemples supportes :
-    //   "crée un compte pour Yosser Khaldi avec email ... manager"
-    //   "Yosser Khaldi, email ..., role MANAGER"
-    const withoutEmail = message.replace(emailMatch[0], '');
-    const pourMatch = withoutEmail.match(/pour\s+([A-Za-zÀ-ÿ\-\s]+?)(?:\s+(?:avec|email|rôle|role|manager|viewer|,)\b|$)/i);
-    const namePart = pourMatch ? pourMatch[1] : withoutEmail;
-    const cleanName = namePart.replace(/\b(avec|email|rôle|role|manager|viewer)\b/gi, '').replace(/[,;:]/g, ' ').trim();
-    const nameTokens = cleanName.split(/\s+/).filter(Boolean);
-
-    if (nameTokens.length < 2) {
-      return undefined;
-    }
-
-    const firstName = nameTokens[0];
-    const lastName = nameTokens.slice(1).join(' ');
-
+  private mergeState(current: SessionState, extracted: Partial<SessionState>): SessionState {
     return {
-      action: 'onboard',
-      email,
-      firstName,
-      lastName,
-      role,
+      email: extracted.email ?? current.email,
+      firstName: extracted.firstName ?? current.firstName,
+      lastName: extracted.lastName ?? current.lastName,
+      role: normalizeRole(extracted.role ?? current.role),
     };
   }
 
-  private buildPrompt(message: string): string {
-    return [
-      'Tu es un assistant de BH Assurance. Tu aides l\'administrateur à créer des comptes employés.',
-      'Réponds UNIQUEMENT avec un JSON valide, sans bloc markdown, sans texte avant ou après, ayant l\'un des deux formats suivants.',
-      '',
-      'Si la demande contient toutes les informations nécessaires (email, prénom, nom, rôle MANAGER ou VIEWER) :',
-      '{',
-      '  "action": "onboard",',
-      '  "email": "...",',
-      '  "firstName": "...",',
-      '  "lastName": "...",',
-      '  "role": "MANAGER|VIEWER"',
-      '}',
-      '',
-      'Sinon, si une information manque ou si c\'est une discussion générale :',
-      '{',
-      '  "action": "talk",',
-      '  "response": "..."',
-      '}',
-      '',
-      `Message de l'administrateur : ${message}`,
-    ].join('\n');
+  private getMissingFields(state: SessionState): string[] {
+    const missing: string[] = [];
+    if (!state.email) missing.push('l\'email');
+    if (!state.firstName) missing.push('le prenom');
+    if (!state.lastName) missing.push('le nom');
+    if (!state.role) missing.push('le role (MANAGER ou VIEWER)');
+    return missing;
   }
 
+  private askForMissing(missing: string[], state: SessionState): string {
+    if (!state.email) {
+      return 'Merci de me donner l\'adresse email de l\'employe.';
+    }
+    if (!state.firstName || !state.lastName) {
+      return 'Merci de me donner le prenom et le nom de l\'employe.';
+    }
+    if (!state.role) {
+      return 'Merci de me preciser le role : MANAGER ou VIEWER ?';
+    }
+    return `Informations manquantes : ${missing.join(', ')}.`;
+  }
+
+  private extractFields(message: string): Partial<SessionState> {
+    const result: Partial<SessionState> = {};
+
+    // Email
+    const emailMatch = message.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+    if (emailMatch) {
+      result.email = emailMatch[1].toLowerCase();
+    }
+
+    // Role
+    const roleMatch = message.match(/\b(MANAGER|VIEWER)\b/i);
+    if (roleMatch) {
+      const r = normalizeRole(roleMatch[1]);
+      if (r) result.role = r;
+    }
+
+    // "prenom est X et le nom est Y"
+    const explicitNameMatch = message.match(/pr[eé]nom\s+(?:est\s+)?([A-Za-zÀ-ÿ\-]+).*?nom\s+(?:est\s+)?([A-Za-zÀ-ÿ\-]+)/i);
+    if (explicitNameMatch) {
+      result.firstName = explicitNameMatch[1];
+      result.lastName = explicitNameMatch[2];
+    }
+
+    // Nom / prenom apres "pour" ou "nom :"
+    if (!result.firstName || !result.lastName) {
+      const namePattern = /(?:pour|nom|prenom|employe)\s*:?\s*([A-Za-zÀ-ÿ\-]+(?:\s+[A-Za-zÀ-ÿ\-]+)+)/i;
+      const nameMatch = message.match(namePattern);
+      if (nameMatch) {
+        const clean = nameMatch[1]
+          .replace(/\b(avec|email|rôle|role|manager|viewer|est|je|suis|un|compte)\b/gi, '')
+          .replace(/[,;:]/g, ' ')
+          .trim();
+        const tokens = clean.split(/\s+/).filter(Boolean);
+        if (tokens.length >= 2) {
+          result.firstName = tokens[0];
+          result.lastName = tokens.slice(1).join(' ');
+        }
+      }
+    }
+
+    // Si l'utilisateur fournit "Prenom Nom" directement au debut
+    if (!result.firstName || !result.lastName) {
+      const simpleName = message.match(/^\s*([A-Za-zÀ-ÿ\-]+)\s+([A-Za-zÀ-ÿ\-]+(?:\s+[A-Za-zÀ-ÿ\-]+)?)\s*(?:email|rôle|role|manager|viewer|MANAGER|VIEWER|$)/i);
+      if (simpleName) {
+        result.firstName = simpleName[1];
+        result.lastName = simpleName[2].trim();
+      }
+    }
+
+    return result;
+  }
+
+  // Gardé pour les messages ambigus ou conversationnels
   private async callGemini(userPrompt: string): Promise<string> {
     const apiKey = this.config.get<string>('GOOGLE_GEMINI_API_KEY');
     const rawModel = this.config.get<string>('GEMINI_MODEL', 'gemini-3.5-flash');
-    // Les modèles 1.5.x ne sont plus reconnus par l'API Gemini ; on force un modèle valide.
     const model = rawModel.startsWith('gemini-1.5') ? 'gemini-3.5-flash' : rawModel;
 
     if (!apiKey) {
@@ -159,80 +232,5 @@ export class AgentChatService {
     }
 
     return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-  }
-
-  private parseAgentResult(raw: string): GeminiAgentResult {
-    try {
-      // Supprime les blocs markdown ```json ... ``` parfois renvoyés par Gemini.
-      const cleaned = raw
-        .replace(/^```json\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      const jsonString = jsonMatch ? jsonMatch[0] : cleaned;
-      const parsed = JSON.parse(jsonString) as GeminiAgentResult;
-
-      const action = parsed.action as string;
-      if (action !== 'onboard' && action !== 'talk') {
-        throw new Error(`Action inconnue: ${action}`);
-      }
-
-      return parsed;
-    } catch (err) {
-      this.logger.error(`Agent response parsing error: ${(err as Error).message}`);
-      this.logger.warn(`Raw response: ${raw}`);
-      return {
-        action: 'talk',
-        response: 'Je suis désolé, je n\'ai pas compris. Pouvez-vous reformuler ?',
-      };
-    }
-  }
-
-  private async handleOnboard(parsed: GeminiOnboardResult) {
-    const normalizedRole = parsed.role?.toUpperCase();
-
-    if (!parsed.email || !parsed.firstName || !parsed.lastName) {
-      return {
-        type: 'error',
-        message: 'Informations manquantes pour créer le compte (email, prénom ou nom).',
-      };
-    }
-
-    if (normalizedRole !== 'MANAGER' && normalizedRole !== 'VIEWER') {
-      return {
-        type: 'error',
-        message: `Rôle invalide : ${parsed.role}. Seuls MANAGER et VIEWER sont autorisés.`,
-      };
-    }
-
-    try {
-      const result = await this.onboarding.createUser({
-        email: parsed.email.toLowerCase(),
-        firstName: parsed.firstName,
-        lastName: parsed.lastName,
-        role: normalizedRole as 'MANAGER' | 'VIEWER',
-      });
-
-      return {
-        type: 'success',
-        message: `Compte créé pour ${result.user.firstName} ${result.user.lastName}. Email envoyé à ${result.user.email}. Mot de passe temporaire : ${result.temporaryPassword}`,
-        temporaryPassword: result.temporaryPassword,
-      };
-    } catch (err) {
-      this.logger.error(`Onboarding error: ${(err as Error).message}`);
-      const msg = (err as Error).message;
-
-      if (msg.toLowerCase().includes('email') && msg.toLowerCase().includes('existe')) {
-        return {
-          type: 'error',
-          message: `Un compte avec l'email ${parsed.email} existe déjà. Vous pouvez utiliser une autre adresse ou demander la réactivation du compte existant.`,
-        };
-      }
-
-      return {
-        type: 'error',
-        message: `Erreur lors de la création du compte : ${msg}`,
-      };
-    }
   }
 }

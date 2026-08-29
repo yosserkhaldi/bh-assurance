@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AgentChatDto {
@@ -6,4 +6,9 @@ export class AgentChatDto {
   @IsString()
   @IsNotEmpty()
   message!: string;
+
+  @ApiProperty({ required: false, example: 'uuid-session' })
+  @IsString()
+  @IsOptional()
+  sessionId?: string;
 }
