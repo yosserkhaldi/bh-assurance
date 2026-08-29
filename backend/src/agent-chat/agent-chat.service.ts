@@ -36,6 +36,7 @@ interface SessionState {
 interface ChatMessage {
   role: 'user' | 'agent';
   content: string;
+  isError?: boolean;
 }
 
 function generateSessionId(): string {
@@ -108,8 +109,11 @@ export class AgentChatService {
       };
     } catch (err) {
       this.logger.error(`Agent chat error: ${(err as Error).message}`);
-      const reply = 'L\'agent de creation de compte est momentanement indisponible. Veuillez reessayer plus tard.';
-      history.push({ role: 'agent', content: reply });
+      const userMessage = (err as { response?: { message?: string }; message?: string })?.response?.message || (err as Error).message;
+      const reply = userMessage
+        ? `Erreur : ${userMessage}`
+        : 'L\'agent de creation de compte est momentanement indisponible. Veuillez reessayer plus tard.';
+      history.push({ role: 'agent', content: reply, isError: true });
       return { sessionId: sid, type: 'error', message: reply };
     }
   }
@@ -162,22 +166,26 @@ export class AgentChatService {
     }
 
     // "prenom est X et le nom est Y"
-    const explicitNameMatch = message.match(/pr[eé]nom\s+(?:est\s+)?([A-Za-zÀ-ÿ\-]+).*?nom\s+(?:est\s+)?([A-Za-zÀ-ÿ\-]+)/i);
+    const explicitNameMatch = message.match(
+      /pr[eé]nom\s+(?:est\s+)?([A-Za-zÀ-ÿ\-]+).*?\s(?:le\s+)?nom\s+(?:est\s+)?([A-Za-zÀ-ÿ\-]+)/i,
+    );
     if (explicitNameMatch) {
-      result.firstName = explicitNameMatch[1];
-      result.lastName = explicitNameMatch[2];
+      result.firstName = this.cleanName(explicitNameMatch[1]);
+      result.lastName = this.cleanName(explicitNameMatch[2]);
     }
 
-    // Nom / prenom apres "pour" ou "nom :"
+    // "nom : X, prenom : Y" ou "X Y" apres "pour" / "employe" / "compte"
     if (!result.firstName || !result.lastName) {
-      const namePattern = /(?:pour|nom|prenom|employe)\s*:?\s*([A-Za-zÀ-ÿ\-]+(?:\s+[A-Za-zÀ-ÿ\-]+)+)/i;
-      const nameMatch = message.match(namePattern);
+      const prepared = message
+        .replace(emailMatch?.[0] || '', ' ')
+        .replace(roleMatch?.[0] || '', ' ')
+        .replace(/[,;:]/g, ' ');
+
+      // "pour Yosser Khaldi" ou "nom : Yosser Khaldi"
+      const namePattern = /(?:pour|nom|prenom|employ[eé]|compte)\s*(?:est|:)?\s*([A-Za-zÀ-ÿ\-]+(?:\s+[A-Za-zÀ-ÿ\-]+)+)/i;
+      const nameMatch = prepared.match(namePattern);
       if (nameMatch) {
-        const clean = nameMatch[1]
-          .replace(/\b(avec|email|rôle|role|manager|viewer|est|je|suis|un|compte)\b/gi, '')
-          .replace(/[,;:]/g, ' ')
-          .trim();
-        const tokens = clean.split(/\s+/).filter(Boolean);
+        const tokens = this.tokenizeNames(nameMatch[1]);
         if (tokens.length >= 2) {
           result.firstName = tokens[0];
           result.lastName = tokens.slice(1).join(' ');
@@ -187,14 +195,28 @@ export class AgentChatService {
 
     // Si l'utilisateur fournit "Prenom Nom" directement au debut
     if (!result.firstName || !result.lastName) {
-      const simpleName = message.match(/^\s*([A-Za-zÀ-ÿ\-]+)\s+([A-Za-zÀ-ÿ\-]+(?:\s+[A-Za-zÀ-ÿ\-]+)?)\s*(?:email|rôle|role|manager|viewer|MANAGER|VIEWER|$)/i);
+      const simpleName = message.match(
+        /^\s*([A-Za-zÀ-ÿ\-]+)\s+([A-Za-zÀ-ÿ\-]+(?:\s+[A-Za-zÀ-ÿ\-]+)?)\s*(?:email|r[oô]le|manager|viewer|$)/i,
+      );
       if (simpleName) {
-        result.firstName = simpleName[1];
-        result.lastName = simpleName[2].trim();
+        result.firstName = this.cleanName(simpleName[1]);
+        result.lastName = this.cleanName(simpleName[2]);
       }
     }
 
     return result;
+  }
+
+  private cleanName(value: string): string {
+    return value
+      .replace(/\b(avec|email|r[oô]le|manager|viewer|est|je|suis|un|compte|pour|nom|pr[eé]nom|employ[eé])\b/gi, '')
+      .replace(/[,;:]/g, ' ')
+      .trim();
+  }
+
+  private tokenizeNames(value: string): string[] {
+    const cleaned = this.cleanName(value);
+    return cleaned.split(/\s+/).filter(Boolean);
   }
 
   // Gardé pour les messages ambigus ou conversationnels
