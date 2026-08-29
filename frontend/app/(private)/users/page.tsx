@@ -37,11 +37,24 @@ type Conversation = {
   messages: ChatMessage[];
 };
 
-const CHAT_STORAGE_KEY = 'bh-agent-conversations';
-
-function loadConversations(): Conversation[] {
+function getCurrentUserId(): string | null {
   try {
-    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    const raw = localStorage.getItem('user');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { id?: string };
+    return parsed?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+function getStorageKey(userId: string): string {
+  return `bh-agent-conversations-${userId}`;
+}
+
+function loadConversations(userId: string): Conversation[] {
+  try {
+    const raw = localStorage.getItem(getStorageKey(userId));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Conversation[];
     return Array.isArray(parsed) ? parsed : [];
@@ -50,8 +63,8 @@ function loadConversations(): Conversation[] {
   }
 }
 
-function saveConversations(conversations: Conversation[]) {
-  localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(conversations));
+function saveConversations(userId: string, conversations: Conversation[]) {
+  localStorage.setItem(getStorageKey(userId), JSON.stringify(conversations));
 }
 
 function generateSessionId(): string {
@@ -85,8 +98,14 @@ export default function UsersPage() {
   const [chatCopied, setChatCopied] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   useEffect(() => {
-    setConversations(loadConversations());
+    const userId = getCurrentUserId();
+    setCurrentUserId(userId);
+    if (userId) {
+      setConversations(loadConversations(userId));
+    }
   }, []);
 
   const chatInitializedRef = useRef(false);
@@ -99,7 +118,7 @@ export default function UsersPage() {
   }, [chatOpen]);
 
   useEffect(() => {
-    if (!currentSessionId) return;
+    if (!currentSessionId || !currentUserId) return;
     setConversations((prev) => {
       const next = prev
         .map((c) => (c.id === currentSessionId ? { ...c, messages, updatedAt: Date.now(), title: conversationTitle(messages) } : c))
@@ -112,10 +131,10 @@ export default function UsersPage() {
           messages,
         });
       }
-      saveConversations(next);
+      saveConversations(currentUserId, next);
       return next;
     });
-  }, [messages, currentSessionId]);
+  }, [messages, currentSessionId, currentUserId]);
 
   const startNewConversation = () => {
     const id = generateSessionId();
@@ -140,9 +159,10 @@ export default function UsersPage() {
 
   const deleteConversation = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    if (!currentUserId) return;
     setConversations((prev) => {
       const next = prev.filter((c) => c.id !== id);
-      saveConversations(next);
+      saveConversations(currentUserId, next);
       if (currentSessionId === id) {
         startNewConversation();
       }
