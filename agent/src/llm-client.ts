@@ -1,8 +1,5 @@
-import OpenAI from 'openai';
 import { config } from './config';
 import { logger } from './logger';
-
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
 export interface OnboardingRequest {
   email?: string;
@@ -10,6 +7,15 @@ export interface OnboardingRequest {
   lastName?: string;
   role?: string;
   error?: string;
+}
+
+interface GeminiResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{ text?: string }>;
+    };
+  }>;
+  error?: { message?: string };
 }
 
 export async function parseOnboardingRequest(textBody: string): Promise<OnboardingRequest> {
@@ -24,17 +30,31 @@ export async function parseOnboardingRequest(textBody: string): Promise<Onboardi
   ].join('\n');
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'Tu es un assistant qui extrait des informations structurées de demandes de création de compte.' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.2,
-      max_tokens: 500,
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent?key=${config.googleGeminiApiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 500,
+        },
+      }),
     });
 
-    const raw = completion.choices[0]?.message?.content?.trim() || '';
+    const data = (await response.json()) as GeminiResponse;
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || `Gemini API error ${response.status}`);
+    }
+
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     const jsonString = jsonMatch ? jsonMatch[0] : raw;
     const parsed = JSON.parse(jsonString) as OnboardingRequest;

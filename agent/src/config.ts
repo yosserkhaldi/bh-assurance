@@ -7,7 +7,8 @@ function getEnv(name: string, fallback?: string): string {
 }
 
 export const config = {
-  openaiApiKey: getEnv('OPENAI_API_KEY'),
+  googleGeminiApiKey: getEnv('GOOGLE_GEMINI_API_KEY'),
+  geminiModel: getEnv('GEMINI_MODEL', 'gemini-1.5-flash'),
   agentApiKey: getEnv('AGENT_API_KEY'),
   gmailUser: getEnv('GMAIL_USER'),
   gmailAppPassword: getEnv('GMAIL_APP_PASSWORD'),
@@ -20,7 +21,7 @@ export const config = {
 
 export function validateConfig(): string[] {
   const missing: string[] = [];
-  if (!config.openaiApiKey) missing.push('OPENAI_API_KEY');
+  if (!config.googleGeminiApiKey) missing.push('GOOGLE_GEMINI_API_KEY');
   if (!config.agentApiKey) missing.push('AGENT_API_KEY');
   if (!config.gmailUser) missing.push('GMAIL_USER');
   if (!config.gmailAppPassword) missing.push('GMAIL_APP_PASSWORD');
