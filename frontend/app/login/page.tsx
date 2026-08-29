@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, LockKeyhole } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { api } from '@/lib/api';
@@ -14,6 +14,12 @@ type FormData = z.infer<typeof schema>;
 export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+  }, []);
   const [showPassword, setShowPassword] = useState(false);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema), defaultValues: { email: 'admin@bh-assurance.tn', password: 'Admin123!' },

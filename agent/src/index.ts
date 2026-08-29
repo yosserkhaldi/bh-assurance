@@ -21,7 +21,7 @@ function buildWelcomeEmail(data: { firstName: string; email: string; temporaryPa
     `Email : ${data.email}`,
     `Mot de passe temporaire : ${data.temporaryPassword}`,
     '',
-    `Lien vers l'application : ${config.frontendUrl}`,
+    `Lien de connexion : ${config.frontendUrl}/login`,
     '',
     "Vous devrez changer ce mot de passe a votre premiere connexion.",
     '',
@@ -37,7 +37,7 @@ function buildWelcomeEmail(data: { firstName: string; email: string; temporaryPa
         <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Email</td><td style="padding: 8px; border: 1px solid #e2e8f0;">${data.email}</td></tr>
         <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Mot de passe temporaire</td><td style="padding: 8px; border: 1px solid #e2e8f0; font-family: monospace;">${data.temporaryPassword}</td></tr>
       </table>
-      <p><a href="${config.frontendUrl}" style="color: #00a6b2; text-decoration: none;">Acceder a l'application</a></p>
+      <p><a href="${config.frontendUrl}/login" style="color: #00a6b2; text-decoration: none;">Se connecter et changer le mot de passe</a></p>
       <p><strong>Vous devrez changer ce mot de passe a votre premiere connexion.</strong></p>
       <p>Cordialement,<br/>Equipe BH Assurance</p>
     </div>

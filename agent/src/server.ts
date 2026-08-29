@@ -53,6 +53,7 @@ export function startServer(): void {
         frontendUrl: frontendUrl || config.frontendUrl,
       });
 
+      const loginUrlText = `${(frontendUrl || config.frontendUrl)}/login`;
       const credentialsText = [
         '',
         'Voici vos identifiants de connexion :',
@@ -60,15 +61,19 @@ export function startServer(): void {
         `Email : ${email}`,
         `Mot de passe temporaire : ${temporaryPassword}`,
         '',
+        `Lien de connexion : ${loginUrlText}`,
+        '',
         'Vous devrez changer ce mot de passe a votre premiere connexion.',
       ].join('\n');
 
+      const loginUrl = `${frontendUrl || config.frontendUrl}/login`;
       const credentialsHtml = `
         <p>Voici vos identifiants de connexion :</p>
         <table style="border-collapse: collapse; margin: 16px 0;">
           <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Email</td><td style="padding: 8px; border: 1px solid #e2e8f0;">${email}</td></tr>
           <tr><td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">Mot de passe temporaire</td><td style="padding: 8px; border: 1px solid #e2e8f0; font-family: monospace;">${temporaryPassword}</td></tr>
         </table>
+        <p><a href="${loginUrl}" style="color: #00a6b2; text-decoration: none;">Se connecter et changer le mot de passe</a></p>
         <p><strong>Vous devrez changer ce mot de passe a votre premiere connexion.</strong></p>
       `;
 
