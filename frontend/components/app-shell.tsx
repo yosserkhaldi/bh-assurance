@@ -201,7 +201,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Bell size={19} />
                 {unreadCount > 0 && (
-                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-brandRed ring-2 ring-white" />
+                  <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-brandRed px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
                 )}
               </button>
               {notifOpen && (
