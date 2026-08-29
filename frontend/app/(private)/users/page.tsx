@@ -125,12 +125,18 @@ export default function UsersPage() {
   };
 
   const selectConversation = (id: string) => {
-    const conv = conversations.find((c) => c.id === id);
-    if (conv) {
+    if (id !== currentSessionId) {
       setCurrentSessionId(id);
-      setMessages(conv.messages);
     }
   };
+
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const conv = conversations.find((c) => c.id === currentSessionId);
+    if (conv) {
+      setMessages([...conv.messages]);
+    }
+  }, [currentSessionId, conversations]);
 
   const deleteConversation = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
