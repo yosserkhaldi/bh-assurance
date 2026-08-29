@@ -27,7 +27,14 @@ import { api } from '@/lib/api';
 
 const CHART_COLORS = ['#175cd3', '#00a6b2', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'];
 
-
+const STATUS_COLORS: Record<string, string> = {
+  'Actif': '#10b981',
+  'Brouillon': '#64748b',
+  'Expire bientot': '#f59e0b',
+  'Expire': '#ef4444',
+  'Annule': '#94a3b8',
+  'Renouvele': '#175cd3',
+};
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
   CREATE: 'Creation',
@@ -149,17 +156,28 @@ export default function DashboardPage() {
         <article className="panel p-5">
           <div className="mb-5">
             <h2 className="font-bold text-navy">Répartition des contrats</h2>
-            <p className="mt-1 text-xs text-slate-500">Portefeuille par statut</p>
+            <p className="mt-1 text-xs text-slate-500">Répartition par statut</p>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={contractsByStatus}>
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" fontSize={11} />
-                <YAxis allowDecimals={false} />
-                <Tooltip cursor={{ fill: '#eff6ff' }} />
-                <Bar dataKey="value" fill="#175cd3" radius={[6, 6, 0, 0]} />
-              </BarChart>
+              <PieChart>
+                <Pie
+                  data={contractsByStatus}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={85}
+                  paddingAngle={2}
+                >
+                  {contractsByStatus.map((entry, index) => (
+                    <Cell key={`cell-status-${index}`} fill={STATUS_COLORS[entry.name] ?? CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomPieTooltip />} />
+                <Legend verticalAlign="bottom" height={30} fontSize={11} />
+              </PieChart>
             </ResponsiveContainer>
           </div>
         </article>
