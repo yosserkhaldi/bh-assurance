@@ -47,8 +47,19 @@ const CONTRACT_STATUS_LABELS: Record<string, string> = {
   RENEWED: 'Renouvele',
 };
 
+const CONTRACT_TYPE_LABELS: Record<string, string> = {
+  FLEET: 'Flotte',
+  INDIVIDUAL: 'Individuel',
+  TEMPORARY: 'Temporaire',
+  OTHER: 'Autre',
+};
+
 function statusLabel(status: string): string {
   return CONTRACT_STATUS_LABELS[status] ?? status;
+}
+
+function typeLabel(type: string): string {
+  return CONTRACT_TYPE_LABELS[type] ?? type;
 }
 
 function humanizeGovernorate(value: string): string {
@@ -86,7 +97,7 @@ export class DashboardService {
       expired,
       byStatus,
       byGovernorate,
-      topEstablishmentsRaw,
+      contractsByTypeRaw,
       vehiclesByTypeRaw,
       recentActivity,
     ] = await this.prisma.$transaction([
@@ -102,11 +113,7 @@ export class DashboardService {
       this.prisma.contract.count({ where: { deletedAt: null, endDate: { lt: now } } }),
       this.prisma.contract.groupBy({ by: ['status'], where: { deletedAt: null }, _count: { _all: true }, orderBy: { status: 'asc' } }),
       this.prisma.establishment.groupBy({ by: ['governorate'], where: { deletedAt: null }, _count: { _all: true }, orderBy: { governorate: 'asc' } }),
-      this.prisma.establishment.findMany({
-        where: { deletedAt: null },
-        include: { contracts: { where: { deletedAt: null }, select: { id: true } } },
-        take: 50,
-      }),
+      this.prisma.contract.groupBy({ by: ['type'], where: { deletedAt: null }, _count: { _all: true }, orderBy: { type: 'asc' } }),
       this.prisma.vehicle.groupBy({ by: ['type'], where: { deletedAt: null }, _count: { _all: true }, orderBy: { type: 'asc' } }),
       this.prisma.auditLog.findMany({
         orderBy: { createdAt: 'desc' },
@@ -115,16 +122,16 @@ export class DashboardService {
       }),
     ]);
 
-    const topEstablishments = topEstablishmentsRaw
-      .map((e) => ({ id: e.id, businessName: e.businessName, contractCount: e.contracts.length }))
-      .sort((a, b) => b.contractCount - a.contractCount)
-      .slice(0, 5);
-
     const countValue = (count: any): number => {
       if (typeof count === 'number') return count;
       if (count && typeof count === 'object' && '_all' in count) return count._all as number;
       return 0;
     };
+
+    const contractsByTypeChart = contractsByTypeRaw.map((c) => ({
+      name: typeLabel(c.type),
+      value: countValue(c._count),
+    }));
 
     const byGovernorateChart = topNWithOthers(
       byGovernorate.map((g) => ({ name: humanizeGovernorate(g.governorate), value: countValue(g._count) })),
@@ -152,7 +159,7 @@ export class DashboardService {
       expiringSoon,
       byStatus: byStatusChart,
       byGovernorate: byGovernorateChart,
-      topEstablishments,
+      contractsByType: contractsByTypeChart,
       vehiclesByType: vehiclesByTypeChart,
       recentActivity: recentActivityFormatted,
     };

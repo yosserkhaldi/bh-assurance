@@ -55,8 +55,6 @@ type ExpiringContract = {
 
 type ChartItem = { name: string; value: number };
 
-type TopEstablishment = { id: string; businessName: string; contractCount: number };
-
 type RecentActivity = {
   id: string;
   action: string;
@@ -71,7 +69,7 @@ type Stats = {
   expiringSoon: ExpiringContract[];
   byStatus: ChartItem[];
   byGovernorate: ChartItem[];
-  topEstablishments: TopEstablishment[];
+  contractsByType: ChartItem[];
   vehiclesByType: ChartItem[];
   recentActivity: RecentActivity[];
 };
@@ -212,30 +210,32 @@ export default function DashboardPage() {
           </div>
         </article>
 
-        {/* Top établissements */}
+        {/* Répartition des contrats par type */}
         <article className="panel p-5">
           <div className="mb-5">
-            <h2 className="font-bold text-navy">Top 5 établissements</h2>
-            <p className="mt-1 text-xs text-slate-500">Par nombre de contrats</p>
+            <h2 className="font-bold text-navy">Contrats par type</h2>
+            <p className="mt-1 text-xs text-slate-500">Flotte, individuel, temporaire, autre</p>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={stats?.topEstablishments ?? []}
-                layout="vertical"
-                margin={{ left: 16, right: 16, bottom: 8, top: 8 }}
-              >
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" horizontal={true} vertical={false} />
-                <XAxis type="number" allowDecimals={false} fontSize={11} />
-                <YAxis
-                  type="category"
-                  dataKey="businessName"
-                  width={120}
-                  tick={{ fontSize: 10 }}
-                />
-                <Tooltip cursor={{ fill: '#eff6ff' }} />
-                <Bar dataKey="contractCount" fill="#00a6b2" radius={[0, 6, 6, 0]} />
-              </BarChart>
+              <PieChart>
+                <Pie
+                  data={stats?.contractsByType ?? []}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={85}
+                  paddingAngle={2}
+                >
+                  {(stats?.contractsByType ?? []).map((_, index) => (
+                    <Cell key={`cell-contract-type-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomPieTooltip />} />
+                <Legend verticalAlign="bottom" height={30} fontSize={11} />
+              </PieChart>
             </ResponsiveContainer>
           </div>
         </article>
