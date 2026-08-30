@@ -45,6 +45,14 @@ export class ContractsService {
     return item;
   }
 
+  async findForDocument() {
+    return this.prisma.contract.findMany({
+      where: { deletedAt: null },
+      select: { id: true, number: true, establishment: { select: { businessName: true } } },
+      orderBy: { number: 'asc' },
+    });
+  }
+
   async create(dto: CreateContractDto, userId: string) {
     this.assertDates(dto.startDate, dto.endDate);
     await this.assertSingleActiveContract(dto.establishmentId);

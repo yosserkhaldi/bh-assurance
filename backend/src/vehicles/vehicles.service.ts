@@ -43,6 +43,14 @@ export class VehiclesService {
     return item;
   }
 
+  async findForDocument(contractId: string) {
+    return this.prisma.vehicle.findMany({
+      where: { contractId, deletedAt: null },
+      select: { id: true, registrationNumber: true, make: true, model: true },
+      orderBy: { registrationNumber: 'asc' },
+    });
+  }
+
   async create(dto: CreateVehicleDto, userId: string) {
     const vehicle = await this.prisma.vehicle.create({
       data: {

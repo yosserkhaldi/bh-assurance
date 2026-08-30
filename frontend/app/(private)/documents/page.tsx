@@ -8,7 +8,9 @@ import { PageHeader } from '@/components/page-header';
 import { useCan } from '@/hooks/use-can';
 import { api } from '@/lib/api';
 import { Permission } from '@/lib/permissions';
-import type { Amendment, Contract, GeneratedDocument, GeneratedDocumentType, Vehicle } from '@/types';
+import type { Amendment, GeneratedDocument, GeneratedDocumentType, Vehicle } from '@/types';
+
+type ContractOption = { id: string; number: string; establishment: { businessName: string } };
 
 const documentTypes: GeneratedDocumentType[] = ['ATTESTATION', 'GREEN_CARD', 'AMENDMENT', 'CONTRACT_SUMMARY'];
 const typeLabels: Record<GeneratedDocumentType, string> = {
@@ -27,7 +29,7 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(false);
 
   const [open, setOpen] = useState(false);
-  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [contracts, setContracts] = useState<ContractOption[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [amendments, setAmendments] = useState<Amendment[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -50,16 +52,16 @@ export default function DocumentsPage() {
   }, [loadDocuments]);
 
   const loadContracts = useCallback(async () => {
-    const r = await api.get<{ data: Contract[] }>('/contracts?limit=1000');
-    setContracts(r.data.data);
+    const r = await api.get<ContractOption[]>('/contracts/for-document');
+    setContracts(r.data);
   }, []);
 
   const loadVehiclesAndAmendments = useCallback(async (contractId: string) => {
     const [v, a] = await Promise.all([
-      api.get<{ data: Vehicle[] }>(`/vehicles?contractId=${contractId}&limit=1000`),
+      api.get<Vehicle[]>(`/vehicles/for-document?contractId=${contractId}`),
       api.get<Amendment[]>('/amendments', { params: { contractId } }),
     ]);
-    setVehicles(v.data.data);
+    setVehicles(v.data);
     setAmendments(a.data);
   }, []);
 

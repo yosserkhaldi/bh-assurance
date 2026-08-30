@@ -16,6 +16,7 @@ import { VehiclesService } from './vehicles.service';
 export class VehiclesController {
   constructor(private readonly service: VehiclesService) {}
   @Get() @Permissions(Permission.VEHICLES_READ) findAll(@Query() q: VehicleQueryDto) { return this.service.findAll(q); }
+  @Get('for-document') @Permissions(Permission.VEHICLES_READ) findForDocument(@Query('contractId') contractId: string) { return this.service.findForDocument(contractId); }
   @Get('export/excel') @Permissions(Permission.VEHICLES_EXPORT)
   async export(@Query() q: VehicleQueryDto, @Res() res: Response) {
     const file = await this.service.exportExcel(q);
