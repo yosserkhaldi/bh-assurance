@@ -45,4 +45,5 @@ export interface GeneratedDocument {
   createdAt: string;
   generatedBy?: { id: string; firstName: string; lastName: string };
   amendment?: Amendment;
+  contract?: { id: string; number: string; establishment: { businessName: string } };
 }

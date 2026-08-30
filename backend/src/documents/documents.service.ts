@@ -12,10 +12,14 @@ const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'documents');
 export class DocumentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(contractId: string) {
+  async findAll(contractId?: string) {
     return this.prisma.generatedDocument.findMany({
-      where: { contractId },
-      include: { generatedBy: { select: { id: true, firstName: true, lastName: true } }, amendment: true },
+      where: contractId ? { contractId } : {},
+      include: {
+        generatedBy: { select: { id: true, firstName: true, lastName: true } },
+        amendment: { select: { id: true, type: true, status: true } },
+        contract: { select: { id: true, number: true, establishment: { select: { businessName: true } } } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

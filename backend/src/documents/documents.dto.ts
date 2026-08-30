@@ -2,8 +2,9 @@ import { GeneratedDocumentType } from '@prisma/client';
 import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 
 export class DocumentQueryDto {
+  @IsOptional()
   @IsUUID()
-  contractId!: string;
+  contractId?: string;
 }
 
 export class GenerateDocumentDto {

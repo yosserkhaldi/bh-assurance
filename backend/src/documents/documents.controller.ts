@@ -38,7 +38,7 @@ export class DocumentsController {
   }
 
   @Delete(':id')
-  @Permissions(Permission.CONTRACTS_DELETE)
+  @Permissions(Permission.DOCUMENTS_DELETE)
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(id);
   }
