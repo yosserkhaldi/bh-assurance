@@ -15,8 +15,12 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
-    if (!user || user.status !== 'ACTIVE' || !(await compare(dto.password, user.passwordHash))) {
+    if (!user || user.deletedAt || !(await compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
+    }
+    const pendingActivation = user.status === 'INACTIVE' && user.forcePasswordChange;
+    if (user.status !== 'ACTIVE' && !pendingActivation) {
+      throw new UnauthorizedException('Compte inactif. Contactez votre administrateur.');
     }
     await this.prisma.user.update({
       where: { id: user.id },
@@ -95,7 +99,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: await hash(newPassword, 12), forcePasswordChange: false },
+      data: { passwordHash: await hash(newPassword, 12), forcePasswordChange: false, status: 'ACTIVE' },
     });
 
     // Notifier tous les administrateurs qu'un employé a changé son mot de passe
