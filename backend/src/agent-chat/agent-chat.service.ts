@@ -27,6 +27,7 @@ interface SessionState {
   lastName?: string;
   role?: string;
   action?: 'onboard' | 'update' | 'delete';
+  pendingDelete?: boolean;
 }
 
 interface ChatMessage {
@@ -107,7 +108,30 @@ export class AgentChatService {
       }
 
       if (state.action === 'delete') {
-        return this.handleDelete(userId, state, key, history, sid, parsed.response);
+        if (state.pendingDelete) {
+          const lower = message.toLowerCase().trim();
+          if (/\b(oui|confirmer|valider|ok|yes)\b/.test(lower)) {
+            return this.handleDelete(userId, state, key, history, sid);
+          }
+          if (/\b(non|annuler|stop|no)\b/.test(lower)) {
+            const reply = 'Suppression annulee.';
+            this.saveInteraction(key, {}, history, reply);
+            this.sessions.delete(key);
+            return { sessionId: sid, type: 'talk', message: reply };
+          }
+        }
+
+        const user = await this.prisma.user.findFirst({
+          where: { email: state.email.toLowerCase(), deletedAt: null },
+          select: { id: true, firstName: true, lastName: true },
+        });
+        if (!user) throw new NotFoundException('Aucun compte actif trouve avec cet email.');
+
+        state.pendingDelete = true;
+        this.sessions.set(key, state);
+        const reply = `Vous allez supprimer le compte de ${user.firstName} ${user.lastName} (${state.email}). Confirmez-vous ? (oui / non)`;
+        this.saveInteraction(key, state, history, reply);
+        return { sessionId: sid, type: 'confirm_delete', message: reply, email: state.email };
       }
 
       if (state.action === 'update') {
@@ -197,7 +221,6 @@ export class AgentChatService {
     key: string,
     history: ChatMessage[],
     sid: string,
-    suggestedReply?: string,
   ) {
     const email = state.email!.toLowerCase();
     const user = await this.prisma.user.findFirst({
@@ -224,6 +247,7 @@ export class AgentChatService {
       lastName: parsed.lastName ?? current.lastName,
       role: normalizeRole(parsed.role ?? current.role),
       action: parsed.action ?? current.action,
+      pendingDelete: current.pendingDelete,
     };
   }
 
