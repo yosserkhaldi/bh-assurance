@@ -53,6 +53,20 @@ export class ContractsService {
     });
   }
 
+  async findToRenew(days: number) {
+    const now = new Date();
+    const limit = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+    return this.prisma.contract.findMany({
+      where: {
+        deletedAt: null,
+        status: { not: 'RENEWED' },
+        endDate: { gte: now, lte: limit },
+      },
+      include: { establishment: true, _count: { select: { vehicles: { where: { deletedAt: null } } } } },
+      orderBy: { endDate: 'asc' },
+    });
+  }
+
   async create(dto: CreateContractDto, userId: string) {
     this.assertDates(dto.startDate, dto.endDate);
     await this.assertSingleActiveContract(dto.establishmentId);
@@ -110,9 +124,10 @@ export class ContractsService {
         where: { id },
         data: { status: 'RENEWED', deletedAt: new Date(), updatedById: userId },
       });
+      const { copyVehicles, ...contractData } = dto;
       const contract = await tx.contract.create({
         data: {
-          ...dto,
+          ...contractData,
           number: dto.number.trim().toUpperCase(),
           startDate: new Date(dto.startDate),
           endDate: new Date(dto.endDate),
@@ -120,6 +135,9 @@ export class ContractsService {
           createdById: userId,
         },
       });
+      if (copyVehicles) {
+        await this.transferVehicles(tx, id, contract.id, userId);
+      }
       this.events.emit({
         type: 'CONTRACT_RENEWED',
         entity: 'contract',
@@ -129,6 +147,18 @@ export class ContractsService {
         timestamp: new Date().toISOString(),
       });
       return contract;
+    });
+  }
+
+  private async transferVehicles(
+    tx: any,
+    previousContractId: string,
+    newContractId: string,
+    userId: string,
+  ) {
+    await tx.vehicle.updateMany({
+      where: { contractId: previousContractId, deletedAt: null },
+      data: { contractId: newContractId, updatedById: userId },
     });
   }
 

@@ -10,7 +10,7 @@ import { useCan } from '@/hooks/use-can';
 import { usePaginated } from '@/hooks/use-paginated';
 import { api } from '@/lib/api';
 import { Permission } from '@/lib/permissions';
-import type { User } from '@/types';
+import type { User, Role } from '@/types';
 
 const WELCOME_MESSAGE =
   "Bonjour ! Je peux créer un compte employé pour vous. Donnez-moi l'email, le prénom, le nom et le rôle (MANAGER ou VIEWER).";

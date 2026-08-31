@@ -10,17 +10,12 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
   Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from 'recharts';
 import { PageHeader } from '@/components/page-header';
 import { api } from '@/lib/api';
@@ -92,13 +87,23 @@ const actionColor = (action: string) => {
   }
 };
 
-function CustomPieTooltip({ active, payload }: any) {
+interface PiePayload {
+  name: string;
+  value: number;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload: PiePayload }>;
+}
+
+function CustomPieTooltip({ active, payload }: CustomTooltipProps) {
   if (active && payload && payload.length) {
-    const { name, value } = payload[0].payload;
+    const item = payload[0].payload;
     return (
       <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
-        <p className="font-semibold text-navy">{name}</p>
-        <p className="text-slate-600">{value} élément(s)</p>
+        <p className="font-semibold text-navy">{item.name}</p>
+        <p className="text-slate-600">{item.value} élément(s)</p>
       </div>
     );
   }
@@ -112,7 +117,9 @@ export default function DashboardPage() {
     void api.get<Stats>('/dashboard/statistics').then((r) => setStats(r.data));
   }, []);
 
-  const cards = useMemo(
+  const cards = useMemo<
+    [string, number, React.ElementType, string, string][]
+  >(
     () => [
       ['Établissements', stats?.totals.establishments ?? 0, Building2, 'text-blue-600', 'bg-blue-50'],
       ['Contrats actifs', stats?.totals.contracts ?? 0, ClipboardCheck, 'text-indigo-600', 'bg-indigo-50'],
@@ -120,7 +127,7 @@ export default function DashboardPage() {
       ['Contrats expirés', stats?.totals.expired ?? 0, TriangleAlert, 'text-red-600', 'bg-red-50'],
     ],
     [stats],
-  ) as const;
+  );
 
   const contractsByStatus = useMemo(() => stats?.byStatus ?? [], [stats]);
 
@@ -174,7 +181,7 @@ export default function DashboardPage() {
                   ))}
                 </Pie>
                 <Tooltip content={<CustomPieTooltip />} />
-                <Legend verticalAlign="bottom" height={30} fontSize={11} />
+                <Legend verticalAlign="bottom" height={30} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -204,7 +211,7 @@ export default function DashboardPage() {
                   ))}
                 </Pie>
                 <Tooltip content={<CustomPieTooltip />} />
-                <Legend verticalAlign="bottom" height={30} fontSize={11} />
+                <Legend verticalAlign="bottom" height={30} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -234,7 +241,7 @@ export default function DashboardPage() {
                   ))}
                 </Pie>
                 <Tooltip content={<CustomPieTooltip />} />
-                <Legend verticalAlign="bottom" height={30} fontSize={11} />
+                <Legend verticalAlign="bottom" height={30} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -263,7 +270,7 @@ export default function DashboardPage() {
                   ))}
                 </Pie>
                 <Tooltip content={<CustomPieTooltip />} />
-                <Legend verticalAlign="bottom" height={30} fontSize={11} />
+                <Legend verticalAlign="bottom" height={30} />
               </PieChart>
             </ResponsiveContainer>
           </div>

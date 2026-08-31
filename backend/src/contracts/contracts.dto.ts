@@ -1,5 +1,6 @@
 import { ContractStatus, ContractType } from '@prisma/client';
-import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PaginationDto } from '../common/pagination.dto';
 
 export class ContractQueryDto extends PaginationDto {
@@ -23,4 +24,10 @@ export class UpdateContractDto {
   @IsOptional() @IsDateString() endDate?: string;
   @IsOptional() @IsEnum(ContractStatus) status?: ContractStatus;
 }
-export class RenewContractDto extends CreateContractDto {}
+export class RenewContractDto extends CreateContractDto {
+  @IsOptional() @IsBoolean() copyVehicles?: boolean;
+}
+
+export class ToRenewQueryDto {
+  @IsOptional() @Type(() => Number) @IsInt() days?: number;
+}

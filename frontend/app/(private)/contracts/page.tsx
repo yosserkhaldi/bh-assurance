@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/modal';
 import { PageHeader } from '@/components/page-header';
+import { RenewalModal } from '@/components/renewal-modal';
 import { useCan } from '@/hooks/use-can';
 import { usePaginated } from '@/hooks/use-paginated';
 import { useRealtimeReload } from '@/hooks/use-realtime-reload';
@@ -50,11 +51,19 @@ export default function ContractsPage() {
   const loadEstablishments = () => void api.get<EstablishmentForContract[]>('/establishments/for-contract').then((r) => setEstablishments(r.data));
   useEffect(() => { loadEstablishments(); }, []);
 
-  const begin = (item?: Contract, renew = false) => {
-    setEditing(renew ? null : item ?? null); setRenewing(renew ? item! : null);
-    setForm(item ? { number: renew ? '' : item.number, type: item.type, startDate: item.startDate.slice(0,10), endDate: item.endDate.slice(0,10), status: renew ? 'ACTIVE' : item.status, establishmentId: item.establishmentId } : empty); setOpen(true);
+  const [renewalOpen, setRenewalOpen] = useState(false);
+
+  const begin = (item?: Contract) => {
+    setEditing(item ?? null);
+    setRenewing(null);
+    setForm(item ? { number: item.number, type: item.type, startDate: item.startDate.slice(0,10), endDate: item.endDate.slice(0,10), status: item.status, establishmentId: item.establishmentId } : empty);
+    setOpen(true);
   };
-  const save = async (e: React.FormEvent) => { e.preventDefault(); if (renewing) await api.post(`/contracts/${renewing.id}/renew`, form); else if (editing) await api.patch(`/contracts/${editing.id}`, form); else await api.post('/contracts', form); setOpen(false); await list.reload(); };
+  const beginRenew = (item: Contract) => {
+    setRenewing(item);
+    setRenewalOpen(true);
+  };
+  const save = async (e: React.FormEvent) => { e.preventDefault(); if (editing) await api.patch(`/contracts/${editing.id}`, form); else await api.post('/contracts', form); setOpen(false); await list.reload(); };
   const remove = useCallback(async (id: string) => { if (confirm('Archiver ce contrat et ses vehicules ?')) { await api.delete(`/contracts/${id}`); await list.reload(); } }, [list]);
 
   const openAmendments = useCallback(async (contract: Contract) => {
@@ -157,7 +166,7 @@ export default function ContractsPage() {
       <div className="flex gap-1">
         {canDocumentsRead && <button title="Avenants" className="btn-secondary !h-9 !px-2 text-blue-700" onClick={() => openAmendments(row.original)}><Folder size={16} /></button>}
         {canDocumentsRead && <button title="Documents" className="btn-secondary !h-9 !px-2 text-indigo-700" onClick={() => openDocuments(row.original)}><FileText size={16} /></button>}
-        {canRenew && <button title="Renouveler" className="btn-secondary !h-9 !px-2 text-emerald-700" onClick={() => begin(row.original, true)}><RefreshCw size={16} /></button>}
+        {canRenew && <button title="Renouveler" className="btn-secondary !h-9 !px-2 text-emerald-700" onClick={() => beginRenew(row.original)}><RefreshCw size={16} /></button>}
         {canUpdate && <button title="Modifier" className="btn-secondary !h-9 !px-2" onClick={() => begin(row.original)}><Pencil size={16} /></button>}
         {canDelete && <button title="Supprimer" className="btn-secondary !h-9 !px-2 text-red-600" onClick={() => remove(row.original.id)}><Trash2 size={16} /></button>}
       </div>
@@ -166,15 +175,23 @@ export default function ContractsPage() {
   const set = (key: keyof typeof empty, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
   return <><PageHeader title="Contrats" description="Suivi des polices flotte et de leurs échéances" action={canCreate ? <button className="btn-primary" onClick={() => begin()}><Plus size={18}/>Ajouter un contrat</button> : undefined} /><DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
-    <Modal title={renewing ? `Renouveler ${renewing.number}` : editing ? 'Modifier le contrat' : 'Nouveau contrat'} open={open} onClose={() => setOpen(false)}><form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
+    <Modal title={editing ? 'Modifier le contrat' : 'Nouveau contrat'} open={open} onClose={() => setOpen(false)}><form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
       <label><span className="label">Numero</span><input required minLength={3} maxLength={100} pattern="[A-Za-z0-9][A-Za-z0-9/_-]{2,99}" className="field" value={form.number} disabled={!!editing} onChange={(e) => set('number', e.target.value)} /></label>
       <label><span className="label">Type</span><select className="field" value={form.type} onChange={(e) => set('type', e.target.value)}>{['FLEET','INDIVIDUAL','TEMPORARY','OTHER'].map((v)=><option key={v}>{v}</option>)}</select></label>
       <label><span className="label">Date de debut</span><input required type="date" className="field" max={form.endDate || undefined} value={form.startDate} onChange={(e) => set('startDate', e.target.value)} /></label>
       <label><span className="label">Date de fin</span><input required type="date" className="field" min={form.startDate || undefined} value={form.endDate} onChange={(e) => set('endDate', e.target.value)} /></label>
       <label><span className="label">Statut</span><select className="field" value={form.status} onChange={(e) => set('status', e.target.value)}>{['DRAFT','ACTIVE','EXPIRING_SOON','EXPIRED','CANCELLED'].map((v)=><option key={v}>{v}</option>)}</select></label>
-      <label><span className="label">Etablissement</span><select required className="field" disabled={!!editing || !!renewing} value={form.establishmentId} onChange={(e) => set('establishmentId', e.target.value)}><option value="">Selectionner</option>{establishments.map((e)=><option key={e.id} value={e.id} disabled={e.hasActiveContract}>{e.businessName}{e.hasActiveContract ? ' (contrat actif existant)' : ''}</option>)}</select></label>
+      <label><span className="label">Etablissement</span><select required className="field" disabled={!!editing} value={form.establishmentId} onChange={(e) => set('establishmentId', e.target.value)}><option value="">Selectionner</option>{establishments.map((e)=><option key={e.id} value={e.id} disabled={e.hasActiveContract}>{e.businessName}{e.hasActiveContract ? ' (contrat actif existant)' : ''}</option>)}</select></label>
       <div className="flex justify-end gap-2 sm:col-span-2"><button type="button" className="btn-secondary" onClick={() => setOpen(false)}>Annuler</button><button className="btn-primary">Enregistrer</button></div>
     </form></Modal>
+
+    <RenewalModal
+      contract={renewing}
+      open={renewalOpen}
+      onClose={() => setRenewalOpen(false)}
+      onSuccess={() => { void list.reload(); }}
+      establishments={establishments}
+    />
 
     <Modal title={`Avenants - ${selectedContract?.number ?? ''}`} open={amendmentsOpen} onClose={() => setAmendmentsOpen(false)}>
       <div className="space-y-4">
