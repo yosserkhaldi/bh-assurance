@@ -32,3 +32,48 @@
 - Correct any P0/P1/P2 visual differences before final handoff.
 
 final result: blocked
+
+---
+
+# Assistant BH — Command Center QA
+
+## Source visual truth
+
+- `../design-templates/template-1-command-center.png`
+- Source pixels: 1440 × 1024.
+
+## Implementation target
+
+- Route: `/users`, state: Assistant BH workspace open.
+- Target viewport: 1440 × 1024 desktop, device scale factor 1.
+- Production build: passed on 1 September 2026.
+- ESLint: passed for the changed interface; one unrelated pre-existing warning remains in `documents/page.tsx`.
+- Browser-rendered screenshot: unavailable pending permission to use Playwright CLI.
+- Full-view and focused-region comparison: blocked because no browser-rendered implementation capture is available.
+- Primary interactions and browser console: not yet tested in a browser.
+
+## Findings
+
+- [Blocked] Visual fidelity cannot be graded from source code alone.
+  Location: Assistant BH workspace on `/users`.
+  Evidence: the 1440 × 1024 reference image is available, but no matching rendered capture exists yet.
+  Impact: typography, region proportions, spacing, color fidelity, responsive behavior and persistent-control visibility cannot be validated.
+  Fix: launch the authenticated app, open the assistant, capture at 1440 × 1024, combine the capture with the reference, then correct all P0/P1/P2 differences.
+
+## Required fidelity surfaces
+
+- Fonts and typography: blocked pending rendered capture.
+- Spacing and layout rhythm: blocked pending rendered capture.
+- Colors and visual tokens: blocked pending rendered capture.
+- Image quality and asset fidelity: the supplied BH logo remains owned by the existing application shell; rendered fidelity is pending.
+- Copy and content: French interface copy is implemented; wrapping and truncation remain pending.
+
+## Implementation checklist
+
+- Capture the authenticated `/users` assistant-open state at 1440 × 1024.
+- Test new conversation, history selection/deletion, suggestion chips, send/loading, close, and temporary-password copy.
+- Check browser console errors.
+- Compare the source and implementation in one combined visual input.
+- Fix all P0/P1/P2 differences and repeat the comparison.
+
+final result: blocked

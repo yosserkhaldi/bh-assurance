@@ -1,7 +1,7 @@
 'use client';
 
 import type { ColumnDef } from '@tanstack/react-table';
-import { Bot, CheckCircle, Copy, MessageSquarePlus, Pencil, Send, Trash2, X } from 'lucide-react';
+import { Bot, CalendarDays, CheckCircle, Copy, MessageSquarePlus, Pencil, Plus, Send, Sparkles, Trash2, UserRound, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 
@@ -316,165 +316,76 @@ export default function UsersPage() {
       />
       <DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
 
-      {/* Agent chat panel */}
+      {/* Agent workspace */}
       {chatOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setChatOpen(false)}
-        >
-          <section
-            className="absolute right-0 top-0 flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl sm:flex-row"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Conversations sidebar */}
-            <aside className="flex h-32 flex-col border-b bg-slate-50 sm:h-full sm:w-64 sm:border-b-0 sm:border-r">
-              <div className="flex items-center justify-between border-b p-3">
-                <h3 className="text-sm font-semibold text-navy">Conversations</h3>
-                <button
-                  onClick={startNewConversation}
-                  className="grid h-7 w-7 place-items-center rounded bg-cyan text-white hover:bg-cyan-600"
-                  title="Nouvelle conversation"
-                  aria-label="Nouvelle conversation"
-                >
-                  <MessageSquarePlus size={16} />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-2">
-                {conversations.length === 0 ? (
-                  <p className="px-2 py-4 text-xs text-slate-400">Aucune conversation</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {conversations
-                      .slice()
-                      .sort((a, b) => b.updatedAt - a.updatedAt)
-                      .map((conv) => (
-                        <li
-                          key={conv.id}
-                          onClick={() => selectConversation(conv.id)}
-                          className={`group flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-xs ${
-                            conv.id === currentSessionId
-                              ? 'bg-cyan/10 text-cyan-700'
-                              : 'hover:bg-slate-200'
-                          }`}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium">{conv.title || 'Nouvelle conversation'}</p>
-                            <p className="truncate text-[10px] text-slate-400">
-                              {new Date(conv.updatedAt).toLocaleString('fr-FR', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </p>
-                          </div>
-                          <button
-                            onClick={(e) => deleteConversation(e, conv.id)}
-                            className="ml-1 grid h-6 w-6 place-items-center rounded text-slate-400 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
-                            aria-label="Supprimer"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </li>
-                      ))}
-                  </ul>
-                )}
-              </div>
-            </aside>
-
-            {/* Active chat */}
-            <div className="flex flex-1 flex-col">
-              <header className="flex items-center justify-between border-b p-4">
-                <div className="flex items-center gap-2">
-                  <div className="grid h-8 w-8 place-items-center rounded-full bg-cyan text-white">
-                    <Bot size={18} />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-navy">Agent BH</h2>
-                    <p className="text-xs text-slate-500">Création de comptes employés</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setChatOpen(false)}
-                  className="grid h-9 w-9 place-items-center rounded-md hover:bg-slate-100"
-                  aria-label="Fermer"
-                >
-                  <X size={20} />
-                </button>
-              </header>
-
-              <div className="flex-1 space-y-4 overflow-y-auto p-4">
-                {messages.map((msg, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${
-                        msg.role === 'user'
-                          ? 'rounded-br-none bg-cyan text-white'
-                          : `rounded-bl-none ${msg.isError ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-800'}`
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
-                      {msg.temporaryPassword && (
-                        <div className="mt-3 rounded-md bg-white/90 p-2">
-                          <p className="mb-1 text-xs font-medium text-slate-600">
-                            Mot de passe temporaire
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <code className="flex-1 rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-800">
-                              {msg.temporaryPassword}
-                            </code>
-                            <button
-                              type="button"
-                              onClick={() => copyChatPassword(msg.temporaryPassword!)}
-                              className="grid h-7 w-7 place-items-center rounded hover:bg-slate-200"
-                              title="Copier"
-                            >
-                              {chatCopied ? <CheckCircle size={14} /> : <Copy size={14} />}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {chatLoading && (
-                  <div className="flex justify-start">
-                    <div className="rounded-2xl rounded-bl-none bg-slate-100 px-4 py-2 text-sm text-slate-600">
-                      L&apos;agent écrit…
-                    </div>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-
-              <form onSubmit={sendChatMessage} className="border-t p-4">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Tapez votre message…"
-                    className="field flex-1"
-                    disabled={chatLoading}
-                  />
-                  <button
-                    type="submit"
-                    className="btn-primary !h-10 !w-10 !px-0"
-                    disabled={chatLoading || !chatInput.trim()}
-                    aria-label="Envoyer"
-                  >
-                    <Send size={18} />
-                  </button>
-                </div>
-              </form>
+        <section className="fixed inset-0 z-50 flex min-h-0 bg-white lg:left-[272px] lg:z-30" role="dialog" aria-modal="true" aria-label="Assistant BH">
+          <aside className="hidden w-[286px] shrink-0 flex-col border-r border-slate-200 bg-white md:flex">
+            <div className="flex h-20 items-center justify-between border-b border-slate-200 px-5">
+              <div className="flex items-center gap-2.5 text-navy"><Bot size={20} /><h2 className="font-bold">Assistant BH</h2></div>
+              <button onClick={startNewConversation} className="icon-btn" title="Nouvelle conversation" aria-label="Nouvelle conversation"><MessageSquarePlus size={18} /></button>
             </div>
-          </section>
-        </div>
+            <div className="p-4">
+              <button onClick={startNewConversation} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 text-sm font-semibold text-brandRed transition hover:border-red-200 hover:bg-red-50"><Plus size={17} /> Nouvelle conversation</button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 pb-5">
+              <p className="px-2 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">Conversations</p>
+              {conversations.length === 0 ? <p className="px-2 py-6 text-sm text-slate-400">Aucune conversation enregistrée</p> : (
+                <ul className="space-y-1">
+                  {conversations.slice().sort((a, b) => b.updatedAt - a.updatedAt).map((conv) => (
+                    <li key={conv.id}>
+                      <button onClick={() => selectConversation(conv.id)} className={`group flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left transition ${conv.id === currentSessionId ? 'bg-blue-50 text-navy' : 'text-slate-600 hover:bg-slate-50'}`}>
+                        <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{conv.title || 'Nouvelle conversation'}</p><p className="mt-1 text-[11px] text-slate-400">{new Date(conv.updatedAt).toLocaleString('fr-TN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p></div>
+                        <span onClick={(e) => deleteConversation(e, conv.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-400 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100" role="button" aria-label="Supprimer la conversation"><Trash2 size={13} /></span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-4 text-xs text-slate-500"><CalendarDays size={15} />{new Date().toLocaleDateString('fr-TN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+          </aside>
+
+          <div className="flex min-w-0 flex-1 flex-col bg-white">
+            <header className="flex h-20 shrink-0 items-center justify-between border-b border-slate-200 px-4 md:px-8">
+              <div className="flex items-center gap-3 md:hidden"><Bot size={20} className="text-navy" /><h2 className="font-bold text-navy">Assistant BH</h2></div>
+              <div className="hidden md:block"><p className="text-sm font-semibold text-navy">Espace de gestion assistée</p><p className="mt-0.5 text-xs text-slate-500">Créez et gérez les comptes collaborateurs en toute sécurité</p></div>
+              <button onClick={() => setChatOpen(false)} className="icon-btn border border-slate-200" aria-label="Fermer l’assistant"><X size={19} /></button>
+            </header>
+            <div className="flex-1 overflow-y-auto">
+              <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 md:px-8 md:py-8">
+                <div className="flex-1 space-y-6">
+                  {messages.map((msg, idx) => (
+                    <div key={idx} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {msg.role === 'agent' && <div className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-navy text-white"><Bot size={17} /></div>}
+                      <div className={`max-w-[780px] ${msg.role === 'user' ? 'rounded-xl bg-blue-50 px-5 py-4 text-navy' : ''}`}>
+                        <p className={`whitespace-pre-wrap text-sm leading-6 ${msg.isError ? 'text-red-700' : 'text-slate-700'}`}>{msg.content}</p>
+                        <time className="mt-1.5 block text-right text-[10px] text-slate-400">{new Date(msg.createdAt).toLocaleTimeString('fr-TN', { hour: '2-digit', minute: '2-digit' })}</time>
+                        {msg.temporaryPassword && (
+                          <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mot de passe temporaire</p>
+                            <div className="mt-2 flex items-center gap-2"><code className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm font-semibold text-navy">{msg.temporaryPassword}</code><button type="button" onClick={() => copyChatPassword(msg.temporaryPassword!)} className="icon-btn border border-slate-200 bg-white" title="Copier">{chatCopied ? <CheckCircle size={16} className="text-emerald-600" /> : <Copy size={16} />}</button></div>
+                          </div>
+                        )}
+                      </div>
+                      {msg.role === 'user' && <div className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-navy"><UserRound size={17} /></div>}
+                    </div>
+                  ))}
+                  {chatLoading && <div className="flex items-center gap-3 text-sm text-slate-500"><div className="grid h-9 w-9 place-items-center rounded-full bg-navy text-white"><Bot size={17} /></div><span>L&apos;agent prépare sa réponse…</span></div>}
+                  <div ref={chatEndRef} />
+                </div>
+                <div className="sticky bottom-0 mt-8 bg-white pb-1 pt-4">
+                  <p className="mb-3 text-sm font-semibold text-navy">Que souhaitez-vous faire ?</p>
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    {["Créer un utilisateur", "Modifier un utilisateur", "Désactiver un utilisateur", "Inspecter un utilisateur"].map((suggestion) => <button key={suggestion} type="button" onClick={() => setChatInput(suggestion)} className="rounded-full border border-navy/70 bg-white px-4 py-2 text-xs font-semibold text-navy transition hover:bg-blue-50">{suggestion}</button>)}
+                  </div>
+                  <form onSubmit={sendChatMessage} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_8px_30px_rgba(15,42,82,0.08)] focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50">
+                    <Sparkles size={18} className="ml-2 shrink-0 text-navy" /><input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Tapez votre message…" className="h-11 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-slate-900 outline-none placeholder:text-slate-400" disabled={chatLoading} autoFocus /><button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brandRed text-white transition hover:bg-[#c9151c] disabled:cursor-not-allowed disabled:opacity-40" disabled={chatLoading || !chatInput.trim()} aria-label="Envoyer"><Send size={17} /></button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Edit user modal */}
