@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
+import { AgentToolsService } from './agent-tools.service';
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -13,12 +14,14 @@ interface GeminiResponse {
 }
 
 interface ParsedIntent {
-  action: 'onboard' | 'update' | 'delete' | 'talk' | 'cancel';
+  action: 'onboard' | 'update' | 'delete' | 'talk' | 'cancel' | 'tool';
   email?: string;
   firstName?: string;
   lastName?: string;
   role?: string;
   response?: string;
+  tool?: string;
+  toolArgs?: Record<string, any>;
 }
 
 interface SessionState {
@@ -65,6 +68,7 @@ export class AgentChatService {
     private readonly config: ConfigService,
     private readonly onboarding: OnboardingService,
     private readonly prisma: PrismaService,
+    private readonly tools: AgentToolsService,
   ) {}
 
   async chat(userId: string, sessionId: string | undefined, message: string) {
@@ -86,6 +90,15 @@ export class AgentChatService {
     history.push({ role: 'user', content: message });
 
     try {
+      // Detection locale rapide des recherches avant meme d'appeler Gemini
+      const quickTool = this.detectTool(message);
+      if (quickTool?.action === 'tool' && quickTool.tool) {
+        const toolResult = await this.executeTool(quickTool.tool, quickTool.toolArgs || {});
+        const reply = this.formatToolReply(quickTool.tool, toolResult);
+        await this.saveInteraction(key, userId, sid, state, history, reply);
+        return { sessionId: sid, type: 'talk', message: reply };
+      }
+
       const parsed = await this.parseIntent(message, history, state);
       state = this.mergeState(state, {
         email: parsed.email,
@@ -102,13 +115,20 @@ export class AgentChatService {
         return { sessionId: sid, type: 'talk', message: reply };
       }
 
-      if (parsed.action !== 'talk') {
-        state.action = parsed.action;
+      if (parsed.action === 'tool' && parsed.tool) {
+        const toolResult = await this.executeTool(parsed.tool, parsed.toolArgs || {});
+        const reply = this.formatToolReply(parsed.tool, toolResult, parsed.response);
+        await this.saveInteraction(key, userId, sid, state, history, reply);
+        return { sessionId: sid, type: 'talk', message: reply };
+      }
+
+      if (parsed.action !== 'talk' && parsed.action !== 'tool') {
+        state.action = parsed.action as SessionState['action'];
       }
 
       // Si c'est une conversation generale sans action en cours, on repond directement sans demander des champs.
       if (parsed.action === 'talk' && !state.action) {
-        const reply = parsed.response || 'Je suis votre assistant BH Assurance. Je peux vous aider sur les comptes employes ou repondre a vos questions. Que souhaitez-vous faire ?';
+        const reply = parsed.response || 'Je suis votre assistant BH Assurance. Je peux vous aider sur les comptes employes, les etablissements et les contrats. Que souhaitez-vous faire ?';
         await this.saveInteraction(key, userId, sid, state, history, reply);
         return { sessionId: sid, type: 'talk', message: reply };
       }
@@ -330,20 +350,29 @@ ${historyText}
 
 Message actuel : "${message}"
 
-Determine l'intention EXACTE parmi : onboard, update, delete, talk.
+Tu as acces aux outils suivants pour repondre aux questions sur les donnees :
+- list_users({ role?, status?, limit? }) : liste les utilisateurs actifs. role peut etre MANAGER, VIEWER ou ADMIN. status peut etre ACTIVE, INACTIVE ou LOCKED.
+- search_establishments({ query?, limit? }) : recherche des etablissements par nom, email, telephone ou matricule fiscal.
+- search_contracts({ query?, establishmentName?, status?, limit? }) : recherche des contrats par reference ou vehicule, ou filtre par nom d'etablissement ou statut.
+
+Determine l'intention EXACTE parmi : onboard, update, delete, talk, tool.
 - onboard/creer/ajouter : creation d'un compte employe (besoin de email, prenom, nom, role).
 - update/modifier/changer : modification d'un compte existant (besoin de email + les champs a changer : prenom, nom, role).
 - delete/supprimer/archiver : suppression d'un compte (besoin uniquement de email).
-- talk : question, recherche, conversation generale ou demande qui ne concerne pas directement la creation/modification/suppression d'un compte. Dans ce cas, reponds de maniere utile et naturelle.
+- talk : salutation, remerciement, question simple, ou conversation generale sans besoin de donnees.
+- tool : l'utilisateur demande explicitement une liste, une recherche ou des statistiques sur les utilisateurs, etablissements ou contrats. Dans ce cas, choisis l'outil approprie et les bons parametres.
 
 Extrais les champs s'ils sont presents dans le message.
 
-Reponds UNIQUEMENT en JSON strict (sans markdown, sans texte autour) :
+Reponds UNIQUEMENT en JSON strict (sans markdown, sans texte autour). Pour une action tool, le format est :
+{"action":"tool","tool":"list_users|search_establishments|search_contracts","toolArgs":{...},"response":"..."}
+
+Pour les autres actions :
 {"action":"onboard|update|delete|talk","email":"...","firstName":"...","lastName":"...","role":"MANAGER|VIEWER","response":"..."}
 
 Regles pour response :
 - Sois concis, naturel et adapte-toi au contexte.
-- Si l'utilisateur pose une question generale (recherche, etablissement, contrat, vehicule), reponds de facon utile sans demander email, prenom, nom ou role.
+- Si l'utilisateur demande une liste ou une recherche, utilise l'action "tool" avec les bons parametres plutot que de repondre "Je ne peux pas".
 - Si une information manque pour une action de gestion de compte, pose une question ciblee.
 - Ne repete pas toujours la meme phrase de bienvenue. Varies tes reponses.`;
 
@@ -358,15 +387,28 @@ Regles pour response :
         action = detected;
       }
 
+      // Si Gemini retourne "talk" mais qu'une recherche est clairement demandee, on utilise l'outil detecte localement.
+      const detectedTool = action === 'talk' ? this.detectTool(message) : undefined;
+
       // On fusionne les champs trouves par Gemini et par le fallback regex
-      return {
+      const merged: ParsedIntent = {
         action,
         email: json.email || fallback.email,
         firstName: json.firstName || fallback.firstName,
         lastName: json.lastName || fallback.lastName,
         role: json.role || fallback.role,
         response: json.response,
+        tool: json.tool,
+        toolArgs: json.toolArgs,
       };
+
+      if (detectedTool?.action === 'tool' && detectedTool.tool) {
+        merged.action = 'tool';
+        merged.tool = detectedTool.tool;
+        merged.toolArgs = detectedTool.toolArgs;
+      }
+
+      return merged;
     } catch (err) {
       this.logger.warn(`Gemini parsing failed: ${(err as Error).message}`);
       return fallback;
@@ -466,6 +508,41 @@ Regles pour response :
     return undefined;
   }
 
+  private detectTool(message: string): Partial<ParsedIntent> | undefined {
+    const lower = message.toLowerCase();
+    const isSearchRequest = /\b(liste|listes|donne|donnez|affiche|afficher|recherche|rechercher|trouve|trouver|cherche|chercher|combien|qui sont)\b/.test(lower);
+    if (!isSearchRequest) return undefined;
+
+    if (/\b(utilisateur|utilisateurs|compte|comptes|employe|employes|manager|managers|viewer|viewers|admin|admins)\b/.test(lower)) {
+      const roleMatch = lower.match(/\b(manager|viewer|admin)\b/);
+      return {
+        action: 'tool',
+        tool: 'list_users',
+        toolArgs: { role: roleMatch ? roleMatch[1].toUpperCase() : undefined },
+      };
+    }
+
+    if (/\b(etablissement|etablissements|societe|societes|client|clients)\b/.test(lower)) {
+      const query = message.replace(/\b(liste|listes|donne|donnez|affiche|afficher|recherche|rechercher|trouve|trouver|cherche|chercher|etablissement|etablissements|societe|societes|client|clients)\b/gi, '').trim();
+      return { action: 'tool', tool: 'search_establishments', toolArgs: { query: query || undefined } };
+    }
+
+    if (/\b(contrat|contrats)\b/.test(lower)) {
+      const estMatch = message.match(/(?:etablissement|societe|client)\s+([A-Za-zÀ-ÿ0-9\- ]{2,})/i);
+      const query = message.replace(/\b(liste|listes|donne|donnez|affiche|afficher|recherche|rechercher|trouve|trouver|cherche|chercher|contrat|contrats)\b/gi, '').trim();
+      return {
+        action: 'tool',
+        tool: 'search_contracts',
+        toolArgs: {
+          query: query || undefined,
+          establishmentName: estMatch ? estMatch[1].trim() : undefined,
+        },
+      };
+    }
+
+    return undefined;
+  }
+
   private cleanName(value: string): string {
     return value
       .replace(/\b(avec|email|r[oô]le|manager|viewer|est|je|suis|un|compte|pour|nom|pr[eé]nom|employ[eé])\b/gi, '')
@@ -515,6 +592,43 @@ Regles pour response :
     });
     this.sessions.delete(`${userId}:${sessionId}`);
     this.histories.delete(`${userId}:${sessionId}`);
+  }
+
+  private async executeTool(toolName: string, args: Record<string, any>): Promise<any> {
+    switch (toolName) {
+      case 'list_users':
+        return this.tools.listUsers(args);
+      case 'search_establishments':
+        return this.tools.searchEstablishments(args);
+      case 'search_contracts':
+        return this.tools.searchContracts(args);
+      default:
+        throw new Error(`Outil inconnu : ${toolName}`);
+    }
+  }
+
+  private formatToolReply(toolName: string, result: any, suggestedResponse?: string): string {
+    if (suggestedResponse) return suggestedResponse;
+
+    if (toolName === 'list_users') {
+      if (!result.count) return 'Aucun utilisateur ne correspond a votre recherche.';
+      const lines = result.users.map((u: any, i: number) => `${i + 1}. ${u.name} (${u.email}) — ${u.role}${u.status !== 'ACTIVE' ? ` — ${u.status}` : ''}`);
+      return `J'ai trouve ${result.count} utilisateur(s) :\n${lines.join('\n')}`;
+    }
+
+    if (toolName === 'search_establishments') {
+      if (!result.count) return 'Aucun etablissement ne correspond a votre recherche.';
+      const lines = result.establishments.map((e: any, i: number) => `${i + 1}. ${e.name}${e.matriculeFiscal ? ` (MF: ${e.matriculeFiscal})` : ''}`);
+      return `J'ai trouve ${result.count} etablissement(s) :\n${lines.join('\n')}`;
+    }
+
+    if (toolName === 'search_contracts') {
+      if (!result.count) return 'Aucun contrat ne correspond a votre recherche.';
+      const lines = result.contracts.map((c: any, i: number) => `${i + 1}. ${c.number} — ${c.establishment} — fin : ${c.endDate || 'Non renseignee'} — ${c.status}`);
+      return `J'ai trouve ${result.count} contrat(s) :\n${lines.join('\n')}`;
+    }
+
+    return 'Voici le resultat de votre demande.';
   }
 
   private async callGemini(userPrompt: string): Promise<string> {
