@@ -1,13 +1,14 @@
 'use client';
 
 import type { ColumnDef } from '@tanstack/react-table';
-import { Bot, CalendarDays, CheckCircle, Copy, MessageSquarePlus, Pencil, Plus, Send, Sparkles, Trash2, UserRound, X } from 'lucide-react';
+import { Bot, CalendarDays, CheckCircle, Copy, MessageSquarePlus, Mic, Pencil, Plus, Send, Sparkles, Trash2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 
 import { PageHeader } from '@/components/page-header';
 import { useCan } from '@/hooks/use-can';
 import { usePaginated } from '@/hooks/use-paginated';
+import { useSpeech } from '@/hooks/use-speech';
 import { api } from '@/lib/api';
 import { Permission } from '@/lib/permissions';
 import type { User, Role } from '@/types';
@@ -50,6 +51,12 @@ function generateSessionId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function containsSensitiveInfo(text: string): boolean {
+  const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+  const passwordPattern = /Mot de passe temporaire|Vos identifiants|votre mot de passe|mot de passe temporaire/i;
+  return emailPattern.test(text) || passwordPattern.test(text);
+}
+
 function conversationTitle(messages: ChatMessage[]): string {
   const firstUser = messages.find((m) => m.role === 'user');
   if (firstUser) return firstUser.content.slice(0, 40) + (firstUser.content.length > 40 ? '…' : '');
@@ -81,6 +88,27 @@ export default function UsersPage() {
   const [editLoading, setEditLoading] = useState(false);
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const recordingRef = useRef(false);
+  const interimTranscriptRef = useRef('');
+  const { supported: speechSupported, listen, speak, cancel } = useSpeech();
+
+  useEffect(() => {
+    try {
+      setVoiceMode(localStorage.getItem('bh-agent-voice-mode') === 'true');
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bh-agent-voice-mode', String(voiceMode));
+    } catch {
+      // ignore
+    }
+  }, [voiceMode]);
 
   useEffect(() => {
     const userId = getCurrentUserId();
@@ -163,12 +191,16 @@ export default function UsersPage() {
     }
   };
 
-  const sendChatMessage = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const text = chatInput.trim();
+  const sendChatMessage = async (e?: React.FormEvent | string) => {
+    if (typeof e !== 'string' && e?.preventDefault) {
+      e.preventDefault();
+    }
+    const text = (typeof e === 'string' ? e : chatInput).trim();
     if (!text || chatLoading) return;
 
     const now = Date.now();
+    cancel();
+
     const userMessage: ChatMessage = { role: 'user', content: text, createdAt: now };
     setMessages((prev) => [...prev, userMessage]);
     setChatInput('');
@@ -190,6 +222,10 @@ export default function UsersPage() {
       if (data.type === 'success') {
         await list.reload();
       }
+
+      if (voiceMode && !containsSensitiveInfo(data.message) && data.type !== 'success') {
+        speak(data.message);
+      }
     } catch (err) {
       const message =
         err && typeof err === 'object' && 'response' in err
@@ -197,10 +233,48 @@ export default function UsersPage() {
             'Une erreur est survenue.'
           : 'Une erreur est survenue.';
       setMessages((prev) => [...prev, { role: 'agent', content: message, isError: true, createdAt: Date.now() }]);
+
+      if (voiceMode && !containsSensitiveInfo(message)) {
+        speak(message);
+      }
     } finally {
       setChatLoading(false);
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     }
+  };
+
+  const startRecording = () => {
+    if (!speechSupported || recordingRef.current) return;
+    recordingRef.current = true;
+    setRecording(true);
+    interimTranscriptRef.current = '';
+    cancel();
+
+    listen((text) => {
+      interimTranscriptRef.current = text;
+      setChatInput(text);
+    })
+      .then((finalText) => {
+        recordingRef.current = false;
+        setRecording(false);
+        if (finalText) {
+          setChatInput(finalText);
+          sendChatMessage(finalText);
+        } else {
+          setChatInput('');
+        }
+      })
+      .catch(() => {
+        recordingRef.current = false;
+        setRecording(false);
+        setChatInput('');
+      });
+  };
+
+  const stopRecording = () => {
+    if (!recordingRef.current) return;
+    recordingRef.current = false;
+    setRecording(false);
   };
 
   const copyChatPassword = async (password: string) => {
@@ -342,7 +416,23 @@ export default function UsersPage() {
             <header className="flex h-20 shrink-0 items-center justify-between border-b border-slate-200 px-4 md:px-8">
               <div className="flex items-center gap-3 md:hidden"><Bot size={20} className="text-navy" /><h2 className="font-bold text-navy">Assistant BH</h2></div>
               <div className="hidden md:block"><p className="text-sm font-semibold text-navy">Espace de gestion assistée</p><p className="mt-0.5 text-xs text-slate-500">Créez et gérez les comptes collaborateurs en toute sécurité</p></div>
-              <button onClick={() => setChatOpen(false)} className="icon-btn border border-slate-200" aria-label="Fermer l’assistant"><X size={19} /></button>
+              <div className="flex items-center gap-2">
+                {speechSupported && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (voiceMode) cancel();
+                      setVoiceMode((v) => !v);
+                    }}
+                    className={`icon-btn border transition ${voiceMode ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-slate-200 text-slate-500 hover:text-slate-700'}`}
+                    title={voiceMode ? 'Arrêter le mode vocal' : 'Démarrer le mode vocal'}
+                    aria-label={voiceMode ? 'Arrêter le mode vocal' : 'Démarrer le mode vocal'}
+                  >
+                    {voiceMode ? <Volume2 size={19} /> : <VolumeX size={19} />}
+                  </button>
+                )}
+                <button onClick={() => setChatOpen(false)} className="icon-btn border border-slate-200" aria-label="Fermer l’assistant"><X size={19} /></button>
+              </div>
             </header>
             <div className="flex-1 overflow-y-auto">
               <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 md:px-8 md:py-8">
@@ -372,7 +462,33 @@ export default function UsersPage() {
                     {["Créer un utilisateur", "Modifier un utilisateur", "Désactiver un utilisateur", "Inspecter un utilisateur"].map((suggestion) => <button key={suggestion} type="button" onClick={() => setChatInput(suggestion)} className="rounded-full border border-navy/70 bg-white px-4 py-2 text-xs font-semibold text-navy transition hover:bg-blue-50">{suggestion}</button>)}
                   </div>
                   <form onSubmit={sendChatMessage} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_8px_30px_rgba(15,42,82,0.08)] focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50">
-                    <Sparkles size={18} className="ml-2 shrink-0 text-navy" /><input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Tapez votre message…" className="h-11 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-slate-900 outline-none placeholder:text-slate-400" disabled={chatLoading} autoFocus /><button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brandRed text-white transition hover:bg-[#c9151c] disabled:cursor-not-allowed disabled:opacity-40" disabled={chatLoading || !chatInput.trim()} aria-label="Envoyer"><Send size={17} /></button>
+                    <Sparkles size={18} className="ml-2 shrink-0 text-navy" />
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder={recording ? 'Parlez maintenant...' : 'Tapez votre message…'}
+                      className="h-11 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                      disabled={chatLoading || recording}
+                      autoFocus
+                    />
+                    {speechSupported && (
+                      <button
+                        type="button"
+                        onPointerDown={startRecording}
+                        onPointerUp={stopRecording}
+                        onPointerLeave={stopRecording}
+                        onTouchStart={startRecording}
+                        onTouchEnd={stopRecording}
+                        disabled={chatLoading}
+                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40 ${recording ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                        title="Maintenez pour parler"
+                        aria-label="Maintenez pour parler"
+                      >
+                        <Mic size={17} />
+                      </button>
+                    )}
+                    <button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brandRed text-white transition hover:bg-[#c9151c] disabled:cursor-not-allowed disabled:opacity-40" disabled={chatLoading || recording || !chatInput.trim()} aria-label="Envoyer"><Send size={17} /></button>
                   </form>
                 </div>
               </div>
