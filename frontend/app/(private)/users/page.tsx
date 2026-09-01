@@ -259,7 +259,6 @@ export default function UsersPage() {
         setRecording(false);
         if (finalText) {
           setChatInput(finalText);
-          sendChatMessage(finalText);
         } else {
           setChatInput('');
         }

@@ -13,7 +13,7 @@ interface GeminiResponse {
 }
 
 interface ParsedIntent {
-  action: 'onboard' | 'update' | 'delete' | 'talk';
+  action: 'onboard' | 'update' | 'delete' | 'talk' | 'cancel';
   email?: string;
   firstName?: string;
   lastName?: string;
@@ -51,6 +51,7 @@ function normalizeAction(action?: string): ParsedIntent['action'] {
   if (a === 'onboard' || a === 'create' || a === 'add' || a === 'creer' || a === 'ajouter') return 'onboard';
   if (a === 'update' || a === 'modify' || a === 'edit' || a === 'modifier' || a === 'changer') return 'update';
   if (a === 'delete' || a === 'remove' || a === 'supprimer' || a === 'archiver') return 'delete';
+  if (a === 'cancel' || a === 'annuler' || a === 'stop' || a === 'abandonner') return 'cancel';
   return 'talk';
 }
 
@@ -93,8 +94,23 @@ export class AgentChatService {
         role: parsed.role,
       });
 
+      if (parsed.action === 'cancel') {
+        state = {};
+        this.sessions.delete(key);
+        const reply = parsed.response || 'Action annulee. Que puis-je faire pour vous ?';
+        await this.saveInteraction(key, userId, sid, state, history, reply);
+        return { sessionId: sid, type: 'talk', message: reply };
+      }
+
       if (parsed.action !== 'talk') {
         state.action = parsed.action;
+      }
+
+      // Si c'est une conversation generale sans action en cours, on repond directement sans demander des champs.
+      if (parsed.action === 'talk' && !state.action) {
+        const reply = parsed.response || 'Je suis votre assistant BH Assurance. Je peux vous aider sur les comptes employes ou repondre a vos questions. Que souhaitez-vous faire ?';
+        await this.saveInteraction(key, userId, sid, state, history, reply);
+        return { sessionId: sid, type: 'talk', message: reply };
       }
 
       const missing = this.getMissingFields(state);
@@ -307,7 +323,7 @@ export class AgentChatService {
       .map((h) => `${h.role === 'user' ? 'Utilisateur' : 'Agent'} : ${h.content}`)
       .join('\n');
 
-    const prompt = `Tu es un assistant RH intelligent pour BH Assurance. L'administrateur gere des comptes employes (MANAGER ou VIEWER).
+    const prompt = `Tu es un assistant intelligent pour BH Assurance. L'administrateur peut te demander de gerer des comptes employes (roles MANAGER ou VIEWER) ou poser des questions sur l'application (etablissements, contrats, vehicules, etc.).
 
 Historique recent :
 ${historyText}
@@ -315,17 +331,21 @@ ${historyText}
 Message actuel : "${message}"
 
 Determine l'intention EXACTE parmi : onboard, update, delete, talk.
-- onboard/creer/ajouter : creation d'un compte (besoin de email, prenom, nom, role).
+- onboard/creer/ajouter : creation d'un compte employe (besoin de email, prenom, nom, role).
 - update/modifier/changer : modification d'un compte existant (besoin de email + les champs a changer : prenom, nom, role).
 - delete/supprimer/archiver : suppression d'un compte (besoin uniquement de email).
-- talk : question/conversation generale.
+- talk : question, recherche, conversation generale ou demande qui ne concerne pas directement la creation/modification/suppression d'un compte. Dans ce cas, reponds de maniere utile et naturelle.
 
 Extrais les champs s'ils sont presents dans le message.
 
 Reponds UNIQUEMENT en JSON strict (sans markdown, sans texte autour) :
 {"action":"onboard|update|delete|talk","email":"...","firstName":"...","lastName":"...","role":"MANAGER|VIEWER","response":"..."}
 
-response doit etre un message concis et naturel. Si une information manque, pose une question ciblee. Ne repete pas toujours la meme phrase de bienvenue.`;
+Regles pour response :
+- Sois concis, naturel et adapte-toi au contexte.
+- Si l'utilisateur pose une question generale (recherche, etablissement, contrat, vehicule), reponds de facon utile sans demander email, prenom, nom ou role.
+- Si une information manque pour une action de gestion de compte, pose une question ciblee.
+- Ne repete pas toujours la meme phrase de bienvenue. Varies tes reponses.`;
 
     try {
       const text = await this.callGemini(prompt);
@@ -430,14 +450,16 @@ response doit etre un message concis et naturel. Si une information manque, pose
 
   private detectAction(message: string): ParsedIntent['action'] | undefined {
     const lower = message.toLowerCase().trim();
-    const firstVerb = lower.match(/^(?:je\s+(?:veux|voudrais|souhaite|vais|dois)\s+)?(supprimer|archiver|delete|remove|modifier|changer|update|edit|mettre\s+a\s+jour|creer|ajouter|onboard|create|add|nouveau)\b/);
+    const firstVerb = lower.match(/^(?:je\s+(?:veux|voudrais|souhaite|vais|dois)\s+)?(annuler|abandonner|stop|cancel|supprimer|archiver|delete|remove|modifier|changer|update|edit|mettre\s+a\s+jour|creer|ajouter|onboard|create|add|nouveau)\b/);
     if (firstVerb) {
       const verb = firstVerb[1];
+      if (/\b(annuler|abandonner|stop|cancel)\b/.test(verb)) return 'cancel';
       if (/\b(supprimer|archiver|delete|remove)\b/.test(verb)) return 'delete';
       if (/\b(modifier|changer|update|edit|mettre a jour)\b/.test(verb)) return 'update';
       if (/\b(creer|ajouter|onboard|create|add|nouveau)\b/.test(verb)) return 'onboard';
     }
     // Detection secondaire si un verbe d'action apparait sans ambiguite (pas dans un nom propre isole)
+    if (/\b(annuler|abandonner|stop|cancel)\b/.test(lower)) return 'cancel';
     if (/\b(supprimer|archiver|delete|remove)\b/.test(lower) && !/\bcreer\b/.test(lower)) return 'delete';
     if (/\b(modifier|changer|update|edit|mettre a jour)\b/.test(lower) && !/\bcreer\b/.test(lower)) return 'update';
     if (/\b(creer|ajouter|onboard|create|add|nouveau)\b/.test(lower)) return 'onboard';
