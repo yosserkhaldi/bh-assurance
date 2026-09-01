@@ -46,25 +46,6 @@ function getCurrentUserId(): string | null {
   }
 }
 
-function getStorageKey(userId: string): string {
-  return `bh-agent-conversations-${userId}`;
-}
-
-function loadConversations(userId: string): Conversation[] {
-  try {
-    const raw = localStorage.getItem(getStorageKey(userId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Conversation[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveConversations(userId: string, conversations: Conversation[]) {
-  localStorage.setItem(getStorageKey(userId), JSON.stringify(conversations));
-}
-
 function generateSessionId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -104,9 +85,22 @@ export default function UsersPage() {
   useEffect(() => {
     const userId = getCurrentUserId();
     setCurrentUserId(userId);
-    if (userId) {
-      setConversations(loadConversations(userId));
-    }
+    if (!userId) return;
+
+    api
+      .get<Array<{ id: string; title: string; updatedAt: string; messages: ChatMessage[] }>>('/agent/chat/sessions')
+      .then(({ data }) => {
+        setConversations(
+          data.map((s) => ({
+            ...s,
+            updatedAt: new Date(s.updatedAt).getTime(),
+            messages: (s.messages || []).map((m, idx) => ({ ...m, createdAt: Date.now() - (s.messages.length - idx) * 1000 })),
+          })),
+        );
+      })
+      .catch(() => {
+        setConversations([]);
+      });
   }, []);
 
   const chatInitializedRef = useRef(false);
@@ -132,7 +126,6 @@ export default function UsersPage() {
           messages,
         });
       }
-      saveConversations(currentUserId, next);
       return next;
     });
   }, [messages, currentSessionId, currentUserId]);
@@ -157,16 +150,16 @@ export default function UsersPage() {
     }
   };
 
-  const deleteConversation = (e: React.MouseEvent, id: string) => {
+  const deleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!currentUserId) return;
-    setConversations((prev) => {
-      const next = prev.filter((c) => c.id !== id);
-      saveConversations(currentUserId, next);
-      return next;
-    });
-    if (currentSessionId === id) {
-      startNewConversation();
+    try {
+      await api.delete(`/agent/chat/sessions/${id}`);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (currentSessionId === id) {
+        startNewConversation();
+      }
+    } catch {
+      // ignore
     }
   };
 

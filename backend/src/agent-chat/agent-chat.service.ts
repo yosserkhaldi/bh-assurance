@@ -30,7 +30,7 @@ interface SessionState {
   pendingDelete?: boolean;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   role: 'user' | 'agent';
   content: string;
   isError?: boolean;
@@ -72,6 +72,16 @@ export class AgentChatService {
 
     let state = this.sessions.get(key) || {};
     let history = this.histories.get(key) || [];
+
+    if (sessionId && history.length === 0) {
+      const existing = await this.prisma.agentChatSession.findUnique({
+        where: { userId_sessionId: { userId, sessionId: sid } },
+      });
+      if (existing) {
+        history = (existing.messages as unknown) as ChatMessage[];
+      }
+    }
+
     history.push({ role: 'user', content: message });
 
     try {
@@ -90,20 +100,20 @@ export class AgentChatService {
       const missing = this.getMissingFields(state);
       if (missing.length > 0) {
         const reply = parsed.response || this.askForMissing(missing, state);
-        this.saveInteraction(key, state, history, reply);
+        await this.saveInteraction(key, userId, sid, state, history, reply);
         return { sessionId: sid, type: 'talk', message: reply };
       }
 
       if (!state.email) {
         const reply = parsed.response || 'Merci de me donner l\'adresse email de l\'employe.';
-        this.saveInteraction(key, state, history, reply);
+        await this.saveInteraction(key, userId, sid, state, history, reply);
         return { sessionId: sid, type: 'talk', message: reply };
       }
 
       const normalizedRole = normalizeRole(state.role);
       if (!normalizedRole && state.action === 'onboard') {
         const reply = parsed.response || 'Merci de me preciser le role : MANAGER ou VIEWER ?';
-        this.saveInteraction(key, state, history, reply);
+        await this.saveInteraction(key, userId, sid, state, history, reply);
         return { sessionId: sid, type: 'talk', message: reply };
       }
 
@@ -115,7 +125,7 @@ export class AgentChatService {
           }
           if (/\b(non|annuler|stop|no)\b/.test(lower)) {
             const reply = 'Suppression annulee.';
-            this.saveInteraction(key, {}, history, reply);
+            await this.saveInteraction(key, userId, sid, {}, history, reply);
             this.sessions.delete(key);
             return { sessionId: sid, type: 'talk', message: reply };
           }
@@ -130,7 +140,7 @@ export class AgentChatService {
         state.pendingDelete = true;
         this.sessions.set(key, state);
         const reply = `Vous allez supprimer le compte de ${user.firstName} ${user.lastName} (${state.email}). Confirmez-vous ? (oui / non)`;
-        this.saveInteraction(key, state, history, reply);
+        await this.saveInteraction(key, userId, sid, state, history, reply);
         return { sessionId: sid, type: 'confirm_delete', message: reply, email: state.email };
       }
 
@@ -170,7 +180,7 @@ export class AgentChatService {
 
     const reply = `Compte cree pour ${result.user.firstName} ${result.user.lastName}. Email envoye a ${result.user.email}. Mot de passe temporaire : ${result.temporaryPassword}`;
 
-    this.saveInteraction(key, {}, history, reply);
+    await this.saveInteraction(key, userId, sid, {}, history, reply);
     this.sessions.delete(key);
     return {
       sessionId: sid,
@@ -201,7 +211,7 @@ export class AgentChatService {
 
     if (Object.keys(updateData).length === 0) {
       const reply = suggestedReply || `Aucune modification a apporter pour ${user.email}. Que souhaitez-vous changer ?`;
-      this.saveInteraction(key, state, history, reply);
+      await this.saveInteraction(key, userId, sid, state, history, reply);
       return { sessionId: sid, type: 'talk', message: reply };
     }
 
@@ -210,7 +220,7 @@ export class AgentChatService {
     const updated = await this.prisma.user.findUnique({ where: { id: user.id }, select: { firstName: true, lastName: true, role: true } });
     const reply = `Compte mis a jour : ${updated!.firstName} ${updated!.lastName} (${updated!.role}).`;
 
-    this.saveInteraction(key, {}, history, reply);
+    await this.saveInteraction(key, userId, sid, {}, history, reply);
     this.sessions.delete(key);
     return { sessionId: sid, type: 'success', message: reply };
   }
@@ -235,7 +245,7 @@ export class AgentChatService {
     });
 
     const reply = `Compte de ${user.firstName} ${user.lastName} (${email}) archive.`;
-    this.saveInteraction(key, {}, history, reply);
+    await this.saveInteraction(key, userId, sid, {}, history, reply);
     this.sessions.delete(key);
     return { sessionId: sid, type: 'success', message: reply };
   }
@@ -446,10 +456,43 @@ response doit etre un message concis et naturel. Si une information manque, pose
     return cleaned.split(/\s+/).filter(Boolean);
   }
 
-  private saveInteraction(key: string, state: SessionState, history: ChatMessage[], reply: string) {
+  private async saveInteraction(key: string, userId: string, sessionId: string, state: SessionState, history: ChatMessage[], reply: string) {
     this.sessions.set(key, state);
     history.push({ role: 'agent', content: reply });
     this.histories.set(key, history);
+    await this.persistSession(userId, sessionId, history);
+  }
+
+  private async persistSession(userId: string, sessionId: string, history: ChatMessage[]) {
+    const title = history.find((h) => h.role === 'user')?.content.slice(0, 120) || 'Conversation agent';
+    await this.prisma.agentChatSession.upsert({
+      where: { userId_sessionId: { userId, sessionId } },
+      create: { userId, sessionId, title, messages: history as any },
+      update: { title, messages: history as any },
+    });
+  }
+
+  async listSessions(userId: string) {
+    const sessions = await this.prisma.agentChatSession.findMany({
+      where: { userId },
+      select: { id: true, sessionId: true, title: true, messages: true, updatedAt: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+    });
+    return sessions.map((s) => ({
+      id: s.sessionId,
+      title: s.title || 'Conversation',
+      updatedAt: s.updatedAt.toISOString(),
+      messages: ((s.messages as unknown) as ChatMessage[]) || [],
+    }));
+  }
+
+  async deleteSession(userId: string, sessionId: string) {
+    await this.prisma.agentChatSession.deleteMany({
+      where: { userId, sessionId },
+    });
+    this.sessions.delete(`${userId}:${sessionId}`);
+    this.histories.delete(`${userId}:${sessionId}`);
   }
 
   private async callGemini(userPrompt: string): Promise<string> {

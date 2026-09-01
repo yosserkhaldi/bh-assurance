@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../common/permissions.guard';
@@ -18,5 +18,15 @@ export class AgentChatController {
   @Post()
   chat(@CurrentUser() user: JwtUser, @Body() dto: AgentChatDto) {
     return this.agentChat.chat(user.sub, dto.sessionId, dto.message);
+  }
+
+  @Get('sessions')
+  sessions(@CurrentUser() user: JwtUser) {
+    return this.agentChat.listSessions(user.sub);
+  }
+
+  @Delete('sessions/:sessionId')
+  deleteSession(@CurrentUser() user: JwtUser, @Param('sessionId') sessionId: string) {
+    return this.agentChat.deleteSession(user.sub, sessionId);
   }
 }
