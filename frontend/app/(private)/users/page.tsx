@@ -1,7 +1,7 @@
 'use client';
 
 import type { ColumnDef } from '@tanstack/react-table';
-import { Bot, CalendarDays, CheckCircle, Copy, MessageSquarePlus, Mic, Pencil, Plus, Send, Sparkles, Trash2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { Bot, CalendarDays, CheckCircle, Copy, MessageSquarePlus, Mic, Pencil, Plus, Search, Send, Sparkles, Trash2, UserCog, UserPlus, UserRound, UserX, Volume2, VolumeX, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 
@@ -26,8 +26,10 @@ type ChatMessage = {
 
 type ChatResponse =
   | { sessionId: string; type: 'talk'; message: string }
-  | { sessionId: string; type: 'success'; message: string; temporaryPassword: string }
-  | { sessionId: string; type: 'error'; message: string };
+  | { sessionId: string; type: 'success'; message: string; temporaryPassword?: string }
+  | { sessionId: string; type: 'error'; message: string }
+  | { sessionId: string; type: 'confirm_delete'; message: string; email?: string }
+  | { sessionId: string; type: 'confirm_update'; message: string; email?: string };
 
 type Conversation = {
   id: string;
@@ -35,6 +37,13 @@ type Conversation = {
   updatedAt: number;
   messages: ChatMessage[];
 };
+
+const CHAT_SUGGESTIONS = [
+  { label: 'Créer un utilisateur', icon: UserPlus },
+  { label: 'Modifier un utilisateur', icon: UserCog },
+  { label: 'Désactiver un utilisateur', icon: UserX },
+  { label: 'Inspecter un utilisateur', icon: Search },
+];
 
 function getCurrentUserId(): string | null {
   try {
@@ -223,7 +232,8 @@ export default function UsersPage() {
         await list.reload();
       }
 
-      if (voiceMode && !containsSensitiveInfo(data.message) && data.type !== 'success') {
+      const skipVoiceTypes = ['success', 'confirm_update', 'confirm_delete'];
+      if (voiceMode && !containsSensitiveInfo(data.message) && !skipVoiceTypes.includes(data.type)) {
         speak(data.message);
       }
     } catch (err) {
@@ -455,19 +465,43 @@ export default function UsersPage() {
                   {chatLoading && <div className="flex items-center gap-3 text-sm text-slate-500"><div className="grid h-9 w-9 place-items-center rounded-full bg-navy text-white"><Bot size={17} /></div><span>L&apos;agent prépare sa réponse…</span></div>}
                   <div ref={chatEndRef} />
                 </div>
-                <div className="sticky bottom-0 mt-8 bg-white pb-1 pt-4">
-                  <p className="mb-3 text-sm font-semibold text-navy">Que souhaitez-vous faire ?</p>
-                  <div className="mb-4 flex flex-wrap gap-2">
-                    {["Créer un utilisateur", "Modifier un utilisateur", "Désactiver un utilisateur", "Inspecter un utilisateur"].map((suggestion) => <button key={suggestion} type="button" onClick={() => setChatInput(suggestion)} className="rounded-full border border-navy/70 bg-white px-4 py-2 text-xs font-semibold text-navy transition hover:bg-blue-50">{suggestion}</button>)}
+                <div className="sticky bottom-0 mt-8 border-t border-slate-100 bg-white pb-2 pt-5">
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-bold text-navy">Que souhaitez-vous faire ?</p>
+                      <p className="mt-1 text-xs text-slate-500">Choisissez une action ou formulez votre demande.</p>
+                    </div>
+                    <Sparkles size={19} className="shrink-0 text-blue-600" aria-hidden="true" />
                   </div>
-                  <form onSubmit={sendChatMessage} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_8px_30px_rgba(15,42,82,0.08)] focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50">
-                    <Sparkles size={18} className="ml-2 shrink-0 text-navy" />
+                  <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {CHAT_SUGGESTIONS.map(({ label, icon: Icon }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setChatInput(label)}
+                        aria-pressed={chatInput === label}
+                        className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition focus-visible:outline-none ${
+                          chatInput === label
+                            ? 'border-blue-300 bg-blue-50 text-blue-800 shadow-sm'
+                            : 'border-slate-200 bg-white text-navy hover:border-blue-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Icon size={16} className="shrink-0 text-blue-600" aria-hidden="true" />
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <form onSubmit={sendChatMessage} className="rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_10px_35px_rgba(15,42,82,0.10)] transition focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50">
+                    <div className="flex items-center gap-2">
+                      <div className="ml-1 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-navy" aria-hidden="true">
+                        <Sparkles size={17} />
+                      </div>
                     <input
                       type="text"
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       placeholder={recording ? 'Parlez maintenant...' : 'Tapez votre message…'}
-                      className="h-11 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                      className="h-11 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm text-slate-900 outline-none placeholder:text-slate-400"
                       disabled={chatLoading || recording}
                       autoFocus
                     />
@@ -480,14 +514,19 @@ export default function UsersPage() {
                         onTouchStart={startRecording}
                         onTouchEnd={stopRecording}
                         disabled={chatLoading}
-                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40 ${recording ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-40 ${recording ? 'animate-pulse bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-navy'}`}
                         title="Maintenez pour parler"
                         aria-label="Maintenez pour parler"
                       >
                         <Mic size={17} />
                       </button>
                     )}
-                    <button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brandRed text-white transition hover:bg-[#c9151c] disabled:cursor-not-allowed disabled:opacity-40" disabled={chatLoading || recording || !chatInput.trim()} aria-label="Envoyer"><Send size={17} /></button>
+                      <button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brandRed text-white shadow-sm transition hover:bg-[#c9151c] hover:shadow-md disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none" disabled={chatLoading || recording || !chatInput.trim()} aria-label="Envoyer"><Send size={17} /></button>
+                    </div>
+                    <div className="flex items-center justify-between px-2 pb-0.5 pt-1.5 text-[10px] text-slate-400">
+                      <span>{recording ? 'Enregistrement en cours…' : chatLoading ? 'Réponse en cours…' : 'Assistant sécurisé BH Assurance'}</span>
+                      <span className="hidden sm:inline">Entrée pour envoyer</span>
+                    </div>
                   </form>
                 </div>
               </div>
