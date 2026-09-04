@@ -51,10 +51,10 @@ function normalizeRole(role?: string): 'MANAGER' | 'VIEWER' | undefined {
 }
 
 function normalizeAction(action?: string): ParsedIntent['action'] {
-  const a = action?.toLowerCase();
+  const a = action?.toLowerCase().replace(/é/g, 'e');
   if (a === 'onboard' || a === 'create' || a === 'add' || a === 'creer' || a === 'ajouter') return 'onboard';
   if (a === 'update' || a === 'modify' || a === 'edit' || a === 'modifier' || a === 'changer') return 'update';
-  if (a === 'delete' || a === 'remove' || a === 'supprimer' || a === 'archiver') return 'delete';
+  if (a === 'delete' || a === 'remove' || a === 'supprimer' || a === 'archiver' || a === 'desactiver') return 'delete';
   if (a === 'cancel' || a === 'annuler' || a === 'stop' || a === 'abandonner') return 'cancel';
   return 'talk';
 }
@@ -133,6 +133,19 @@ export class AgentChatService {
         return { sessionId: sid, type: 'talk', message: reply };
       }
 
+      // Resolution par nom : "desactiver un utilisateur mariem" -> on retrouve l'email via le nom.
+      if ((state.action === 'delete' || state.action === 'update') && !state.email) {
+        const resolved = await this.resolveUserByName(message, state.firstName, state.lastName);
+        if (resolved.email) {
+          state = { ...state, email: resolved.email };
+          this.sessions.set(key, state);
+        } else if (resolved.candidates.length > 0) {
+          const reply = `J'ai trouve plusieurs comptes possibles :\n${resolved.candidates.map((c, i) => `${i + 1}. ${c}`).join('\n')}\nMerci de me donner l'email exact.`;
+          await this.saveInteraction(key, userId, sid, state, history, reply);
+          return { sessionId: sid, type: 'talk', message: reply };
+        }
+      }
+
       const missing = this.getMissingFields(state);
       if (missing.length > 0) {
         const reply = parsed.response || this.askForMissing(missing, state);
@@ -195,6 +208,43 @@ export class AgentChatService {
     }
   }
 
+  private async resolveUserByName(message: string, firstName?: string, lastName?: string): Promise<{ email?: string; candidates: string[] }> {
+    const stopWords = new Set(['desactiver', 'désactiver', 'supprimer', 'archiver', 'modifier', 'changer', 'utilisateur', 'utilisateurs', 'employe', 'employé', 'employes', 'compte', 'comptes', 'un', 'une', 'le', 'la', 'les', 'de', 'du', 'des', 'pour', 'avec', 'qui', 'je', 'veux', 'voudrais', 'souhaite', 'dois', 'moi', 'role', 'en', 'a', 'admin', 'manager', 'viewer', 'prenom', 'nom', 'd']);
+    let tokens = [firstName, lastName]
+      .filter(Boolean)
+      .join(' ')
+      .split(/\s+/)
+      .map((t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+      .filter((t) => t.length >= 2 && !stopWords.has(t));
+
+    // Si aucun nom detecte, on extrait les mots du message (hors verbes d'action et mots vides).
+    if (tokens.length === 0) {
+      tokens = message
+        .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, ' ')
+        .split(/\s+/)
+        .map((t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zà-ÿ-]/g, ''))
+        .filter((t) => t.length >= 2 && !stopWords.has(t));
+    }
+    if (tokens.length === 0) return { candidates: [] };
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        AND: tokens.map((t) => ({
+          OR: [
+            { firstName: { contains: t, mode: 'insensitive' } },
+            { lastName: { contains: t, mode: 'insensitive' } },
+          ],
+        })),
+      },
+      select: { email: true, firstName: true, lastName: true },
+      take: 10,
+    });
+
+    if (users.length === 1) return { email: users[0].email, candidates: [] };
+    return { candidates: users.map((u) => `${u.firstName} ${u.lastName} (${u.email})`) };
+  }
+
   private async handleOnboard(
     userId: string,
     state: SessionState,
@@ -241,8 +291,8 @@ export class AgentChatService {
     if (!user) throw new NotFoundException('Aucun compte actif trouve avec cet email.');
 
     const updateData: { firstName?: string; lastName?: string; role?: 'MANAGER' | 'VIEWER' } = {};
-    if (state.firstName && state.firstName !== user.firstName) updateData.firstName = state.firstName;
-    if (state.lastName && state.lastName !== user.lastName) updateData.lastName = state.lastName;
+    if (this.isPlausibleName(state.firstName) && state.firstName !== user.firstName) updateData.firstName = state.firstName;
+    if (this.isPlausibleName(state.lastName) && state.lastName !== user.lastName) updateData.lastName = state.lastName;
     if (normalizeRole(state.role) && normalizeRole(state.role) !== user.role) updateData.role = normalizeRole(state.role);
 
     if (Object.keys(updateData).length === 0) {
@@ -259,6 +309,19 @@ export class AgentChatService {
     await this.saveInteraction(key, userId, sid, {}, history, reply);
     this.sessions.delete(key);
     return { sessionId: sid, type: 'success', message: reply };
+  }
+
+  private isPlausibleName(value?: string): value is string {
+    if (!value || value.trim().length < 2) return false;
+    const normalized = value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const stopWords = new Set([
+      'modifier', 'changer', 'creer', 'ajouter', 'supprimer', 'desactiver', 'archiver', 'annuler',
+      'le', 'la', 'les', 'un', 'une', 'de', 'du', 'des', 'en', 'a', 'au', 'aux', 'et', 'ou',
+      'role', 'nom', 'prenom', 'utilisateur', 'employe', 'compte', 'email', 'manager', 'viewer', 'admin',
+      'je', 'tu', 'il', 'qui', 'que', 'moi', 'pour', 'avec', 'dans', 'sur', 'par',
+      'veux', 'voudrais', 'souhaite', 'dois', 'peux', 'est', 'etre', 'mets', 'mettre',
+    ]);
+    return !stopWords.has(normalized);
   }
 
   private async handleDelete(
@@ -491,18 +554,18 @@ Regles pour response :
   }
 
   private detectAction(message: string): ParsedIntent['action'] | undefined {
-    const lower = message.toLowerCase().trim();
-    const firstVerb = lower.match(/^(?:je\s+(?:veux|voudrais|souhaite|vais|dois)\s+)?(annuler|abandonner|stop|cancel|supprimer|archiver|delete|remove|modifier|changer|update|edit|mettre\s+a\s+jour|creer|ajouter|onboard|create|add|nouveau)\b/);
+    const lower = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const firstVerb = lower.match(/^(?:je\s+(?:veux|voudrais|souhaite|vais|dois)\s+)?(annuler|abandonner|stop|cancel|supprimer|archiver|desactiver|delete|remove|modifier|changer|update|edit|mettre\s+a\s+jour|creer|ajouter|onboard|create|add|nouveau)\b/);
     if (firstVerb) {
       const verb = firstVerb[1];
       if (/\b(annuler|abandonner|stop|cancel)\b/.test(verb)) return 'cancel';
-      if (/\b(supprimer|archiver|delete|remove)\b/.test(verb)) return 'delete';
+      if (/\b(supprimer|archiver|desactiver|delete|remove)\b/.test(verb)) return 'delete';
       if (/\b(modifier|changer|update|edit|mettre a jour)\b/.test(verb)) return 'update';
       if (/\b(creer|ajouter|onboard|create|add|nouveau)\b/.test(verb)) return 'onboard';
     }
     // Detection secondaire si un verbe d'action apparait sans ambiguite (pas dans un nom propre isole)
     if (/\b(annuler|abandonner|stop|cancel)\b/.test(lower)) return 'cancel';
-    if (/\b(supprimer|archiver|delete|remove)\b/.test(lower) && !/\bcreer\b/.test(lower)) return 'delete';
+    if (/\b(supprimer|archiver|desactiver|delete|remove)\b/.test(lower) && !/\bcreer\b/.test(lower)) return 'delete';
     if (/\b(modifier|changer|update|edit|mettre a jour)\b/.test(lower) && !/\bcreer\b/.test(lower)) return 'update';
     if (/\b(creer|ajouter|onboard|create|add|nouveau)\b/.test(lower)) return 'onboard';
     return undefined;
