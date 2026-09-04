@@ -5,10 +5,17 @@ import { PrismaService } from '../prisma/prisma.service';
 export class AgentToolsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listUsers(args?: { role?: string; status?: string; limit?: number }) {
+  async listUsers(args?: { role?: string; status?: string; query?: string; limit?: number }) {
     const where: any = { deletedAt: null };
     if (args?.role) where.role = args.role.toUpperCase();
     if (args?.status) where.status = args.status.toUpperCase();
+    if (args?.query) {
+      where.OR = [
+        { firstName: { contains: args.query, mode: 'insensitive' } },
+        { lastName: { contains: args.query, mode: 'insensitive' } },
+        { email: { contains: args.query, mode: 'insensitive' } },
+      ];
+    }
 
     const users = await this.prisma.user.findMany({
       where,

@@ -351,7 +351,7 @@ ${historyText}
 Message actuel : "${message}"
 
 Tu as acces aux outils suivants pour repondre aux questions sur les donnees :
-- list_users({ role?, status?, limit? }) : liste les utilisateurs actifs. role peut etre MANAGER, VIEWER ou ADMIN. status peut etre ACTIVE, INACTIVE ou LOCKED.
+- list_users({ role?, status?, query?, limit? }) : liste les utilisateurs actifs. role peut etre MANAGER, VIEWER ou ADMIN. status peut etre ACTIVE, INACTIVE ou LOCKED. query recherche un prenom, un nom ou un email (ex: "mariem").
 - search_establishments({ query?, limit? }) : recherche des etablissements par nom, email, telephone ou matricule fiscal.
 - search_contracts({ query?, establishmentName?, status?, limit? }) : recherche des contrats par reference ou vehicule, ou filtre par nom d'etablissement ou statut.
 
@@ -510,37 +510,50 @@ Regles pour response :
 
   private detectTool(message: string): Partial<ParsedIntent> | undefined {
     const lower = message.toLowerCase();
-    const isSearchRequest = /\b(liste|listes|donne|donnez|affiche|afficher|recherche|rechercher|trouve|trouver|cherche|chercher|combien|qui sont)\b/.test(lower);
+    const isSearchRequest = /\b(liste|listes|donne|donnez|donner|affiche|afficher|recherche|rechercher|trouve|trouver|cherche|chercher|combien|qui sont)\b/.test(lower);
     if (!isSearchRequest) return undefined;
 
-    if (/\b(utilisateur|utilisateurs|compte|comptes|employe|employes|manager|managers|viewer|viewers|admin|admins)\b/.test(lower)) {
+    if (/\b(utilisateur|utilisateurs|user|users|compte|comptes|employe|employes|manager|managers|viewer|viewers|admin|admins)\b/.test(lower)) {
       const roleMatch = lower.match(/\b(manager|viewer|admin)\b/);
+      const nameMatch = message.match(/(?:nom|prenom|appele)\s+(?:est\s+)?(?:de\s+)?([A-Za-zÀ-ÿ\-]+)/i);
       return {
         action: 'tool',
         tool: 'list_users',
-        toolArgs: { role: roleMatch ? roleMatch[1].toUpperCase() : undefined },
+        toolArgs: {
+          role: roleMatch ? roleMatch[1].toUpperCase() : undefined,
+          query: nameMatch ? nameMatch[1] : undefined,
+        },
       };
     }
 
     if (/\b(etablissement|etablissements|societe|societes|client|clients)\b/.test(lower)) {
-      const query = message.replace(/\b(liste|listes|donne|donnez|affiche|afficher|recherche|rechercher|trouve|trouver|cherche|chercher|etablissement|etablissements|societe|societes|client|clients)\b/gi, '').trim();
-      return { action: 'tool', tool: 'search_establishments', toolArgs: { query: query || undefined } };
+      const query = this.extractSearchQuery(message, 'etablissement|etablissements|societe|societes|client|clients');
+      return { action: 'tool', tool: 'search_establishments', toolArgs: { query } };
     }
 
     if (/\b(contrat|contrats)\b/.test(lower)) {
       const estMatch = message.match(/(?:etablissement|societe|client)\s+([A-Za-zÀ-ÿ0-9\- ]{2,})/i);
-      const query = message.replace(/\b(liste|listes|donne|donnez|affiche|afficher|recherche|rechercher|trouve|trouver|cherche|chercher|contrat|contrats)\b/gi, '').trim();
+      const query = this.extractSearchQuery(message, 'contrat|contrats');
       return {
         action: 'tool',
         tool: 'search_contracts',
         toolArgs: {
-          query: query || undefined,
+          query,
           establishmentName: estMatch ? estMatch[1].trim() : undefined,
         },
       };
     }
 
     return undefined;
+  }
+
+  // Extrait un terme de recherche en retirant les mots vides ("donne moi la liste des" -> rien).
+  private extractSearchQuery(message: string, entityKeywords: string): string | undefined {
+    const cleaned = message
+      .replace(new RegExp(`\\b(${entityKeywords}|liste|listes|donne|donnez|donner|affiche|afficher|recherche|rechercher|trouve|trouver|cherche|chercher|moi|tous|tout|toutes|le|la|les|des|de|du|un|une|je|veux|voudrais|souhaite|qui|ont|ont le|est|avec)\\b`, 'gi'), ' ')
+      .replace(/[,;:]/g, ' ')
+      .trim();
+    return cleaned.length >= 2 ? cleaned : undefined;
   }
 
   private cleanName(value: string): string {
@@ -597,27 +610,30 @@ Regles pour response :
   }
 
   private formatToolReply(toolName: string, result: any, suggestedResponse?: string): string {
-    if (suggestedResponse) return suggestedResponse;
+    let dataReply: string;
 
     if (toolName === 'list_users') {
-      if (!result.count) return 'Aucun utilisateur ne correspond a votre recherche.';
-      const lines = result.users.map((u: any, i: number) => `${i + 1}. ${u.name} (${u.email}) — ${u.role}${u.status !== 'ACTIVE' ? ` — ${u.status}` : ''}`);
-      return `J'ai trouve ${result.count} utilisateur(s) :\n${lines.join('\n')}`;
+      dataReply = !result.count
+        ? 'Aucun utilisateur ne correspond a votre recherche.'
+        : `J'ai trouve ${result.count} utilisateur(s) :\n${result.users.map((u: any, i: number) => `${i + 1}. ${u.name} (${u.email}) — ${u.role}${u.status !== 'ACTIVE' ? ` — ${u.status}` : ''}`).join('\n')}`;
+    } else if (toolName === 'search_establishments') {
+      dataReply = !result.count
+        ? 'Aucun etablissement ne correspond a votre recherche.'
+        : `J'ai trouve ${result.count} etablissement(s) :\n${result.establishments.map((e: any, i: number) => `${i + 1}. ${e.name}${e.matriculeFiscal ? ` (MF: ${e.matriculeFiscal})` : ''}`).join('\n')}`;
+    } else if (toolName === 'search_contracts') {
+      dataReply = !result.count
+        ? 'Aucun contrat ne correspond a votre recherche.'
+        : `J'ai trouve ${result.count} contrat(s) :\n${result.contracts.map((c: any, i: number) => `${i + 1}. ${c.number} — ${c.establishment} — fin : ${c.endDate || 'Non renseignee'} — ${c.status}`).join('\n')}`;
+    } else {
+      dataReply = 'Voici le resultat de votre demande.';
     }
 
-    if (toolName === 'search_establishments') {
-      if (!result.count) return 'Aucun etablissement ne correspond a votre recherche.';
-      const lines = result.establishments.map((e: any, i: number) => `${i + 1}. ${e.name}${e.matriculeFiscal ? ` (MF: ${e.matriculeFiscal})` : ''}`);
-      return `J'ai trouve ${result.count} etablissement(s) :\n${lines.join('\n')}`;
+    // On garde toujours les donnees reelles, meme si Gemini a propose un texte,
+    // sinon la liste n'apparait jamais dans la reponse.
+    if (suggestedResponse) {
+      return `${suggestedResponse}\n\n${dataReply}`;
     }
-
-    if (toolName === 'search_contracts') {
-      if (!result.count) return 'Aucun contrat ne correspond a votre recherche.';
-      const lines = result.contracts.map((c: any, i: number) => `${i + 1}. ${c.number} — ${c.establishment} — fin : ${c.endDate || 'Non renseignee'} — ${c.status}`);
-      return `J'ai trouve ${result.count} contrat(s) :\n${lines.join('\n')}`;
-    }
-
-    return 'Voici le resultat de votre demande.';
+    return dataReply;
   }
 
   private async callGemini(userPrompt: string): Promise<string> {
