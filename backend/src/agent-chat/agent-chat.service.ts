@@ -20,6 +20,7 @@ interface ParsedIntent {
   firstName?: string;
   lastName?: string;
   role?: string;
+  status?: string;
   response?: string;
   tool?: string;
   toolArgs?: Record<string, any>;
@@ -30,6 +31,7 @@ interface SessionState {
   firstName?: string;
   lastName?: string;
   role?: string;
+  status?: string;
   action?: 'onboard' | 'update' | 'delete';
   pendingDelete?: boolean;
 }
@@ -57,6 +59,15 @@ function normalizeAction(action?: string): ParsedIntent['action'] {
   if (a === 'delete' || a === 'remove' || a === 'supprimer' || a === 'archiver' || a === 'desactiver') return 'delete';
   if (a === 'cancel' || a === 'annuler' || a === 'stop' || a === 'abandonner') return 'cancel';
   return 'talk';
+}
+
+function normalizeStatus(status?: string): 'ACTIVE' | 'INACTIVE' | 'LOCKED' | undefined {
+  const s = status?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (!s) return undefined;
+  if (/(desactiv|inactif|inactive)/.test(s)) return 'INACTIVE';
+  if (/(verrouill|bloqu|locked)/.test(s)) return 'LOCKED';
+  if (/(^|[^d])acti/.test(s)) return 'ACTIVE';
+  return undefined;
 }
 
 @Injectable()
@@ -105,6 +116,7 @@ export class AgentChatService {
         firstName: parsed.firstName,
         lastName: parsed.lastName,
         role: parsed.role,
+        status: parsed.status,
       });
 
       if (parsed.action === 'cancel') {
@@ -126,6 +138,12 @@ export class AgentChatService {
         state.action = parsed.action as SessionState['action'];
       }
 
+      // "changer le statut en desactive" = desactivation -> on bascule vers le flux suppression (avec confirmation).
+      if (state.action === 'update' && normalizeStatus(state.status) === 'INACTIVE') {
+        state = { ...state, action: 'delete' };
+        this.sessions.set(key, state);
+      }
+
       // Si c'est une conversation generale sans action en cours, on repond directement sans demander des champs.
       if (parsed.action === 'talk' && !state.action) {
         const reply = parsed.response || 'Je suis votre assistant BH Assurance. Je peux vous aider sur les comptes employes, les etablissements et les contrats. Que souhaitez-vous faire ?';
@@ -138,6 +156,17 @@ export class AgentChatService {
         const resolved = await this.resolveUserByName(message, state.firstName, state.lastName);
         if (resolved.email) {
           state = { ...state, email: resolved.email };
+          // Le nom a servi a identifier la cible, pas a la renommer.
+          if (state.firstName && resolved.firstName && state.firstName.toLowerCase() === resolved.firstName.toLowerCase()) {
+            state = { ...state, firstName: undefined };
+          }
+          if (state.lastName && resolved.lastName && state.lastName.toLowerCase() === resolved.lastName.toLowerCase()) {
+            state = { ...state, lastName: undefined };
+          }
+          // Si le message porte sur un statut, les noms extraits identifient la cible : on ne renomme pas.
+          if (normalizeStatus(state.status) || /\b(statut|status|verrouill|bloqu|d[ée]sactiv|inacti|r[ée]activ)\b/i.test(message)) {
+            state = { ...state, firstName: undefined, lastName: undefined };
+          }
           this.sessions.set(key, state);
         } else if (resolved.candidates.length > 0) {
           const reply = `J'ai trouve plusieurs comptes possibles :\n${resolved.candidates.map((c, i) => `${i + 1}. ${c}`).join('\n')}\nMerci de me donner l'email exact.`;
@@ -188,7 +217,7 @@ export class AgentChatService {
 
         state.pendingDelete = true;
         this.sessions.set(key, state);
-        const reply = `Vous allez supprimer le compte de ${user.firstName} ${user.lastName} (${state.email}). Confirmez-vous ? (oui / non)`;
+        const reply = `Vous allez desactiver le compte de ${user.firstName} ${user.lastName} (${state.email}). Il restera visible avec le statut Desactive. Confirmez-vous ? (oui / non)`;
         await this.saveInteraction(key, userId, sid, state, history, reply);
         return { sessionId: sid, type: 'confirm_delete', message: reply, email: state.email };
       }
@@ -208,8 +237,8 @@ export class AgentChatService {
     }
   }
 
-  private async resolveUserByName(message: string, firstName?: string, lastName?: string): Promise<{ email?: string; candidates: string[] }> {
-    const stopWords = new Set(['desactiver', 'désactiver', 'supprimer', 'archiver', 'modifier', 'changer', 'utilisateur', 'utilisateurs', 'employe', 'employé', 'employes', 'compte', 'comptes', 'un', 'une', 'le', 'la', 'les', 'de', 'du', 'des', 'pour', 'avec', 'qui', 'je', 'veux', 'voudrais', 'souhaite', 'dois', 'moi', 'role', 'en', 'a', 'admin', 'manager', 'viewer', 'prenom', 'nom', 'd']);
+  private async resolveUserByName(message: string, firstName?: string, lastName?: string): Promise<{ email?: string; firstName?: string; lastName?: string; candidates: string[] }> {
+    const stopWords = new Set(['desactiver', 'desactive', 'inactive', 'inactif', 'active', 'actif', 'verrouiller', 'verrouille', 'bloquer', 'bloque', 'reactiver', 'reactif', 'supprimer', 'archiver', 'modifier', 'changer', 'change', 'statut', 'status', 'utilisateur', 'utilisateurs', 'employe', 'employes', 'compte', 'comptes', 'un', 'une', 'le', 'la', 'les', 'de', 'du', 'des', 'pour', 'avec', 'qui', 'je', 'veux', 'voudrais', 'souhaite', 'dois', 'moi', 'role', 'en', 'a', 'admin', 'manager', 'viewer', 'prenom', 'nom', 'd']);
     let tokens = [firstName, lastName]
       .filter(Boolean)
       .join(' ')
@@ -241,7 +270,7 @@ export class AgentChatService {
       take: 10,
     });
 
-    if (users.length === 1) return { email: users[0].email, candidates: [] };
+    if (users.length === 1) return { email: users[0].email, firstName: users[0].firstName, lastName: users[0].lastName, candidates: [] };
     return { candidates: users.map((u) => `${u.firstName} ${u.lastName} (${u.email})`) };
   }
 
@@ -286,14 +315,15 @@ export class AgentChatService {
   ) {
     const user = await this.prisma.user.findFirst({
       where: { email: state.email!.toLowerCase(), deletedAt: null },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
     });
     if (!user) throw new NotFoundException('Aucun compte actif trouve avec cet email.');
 
-    const updateData: { firstName?: string; lastName?: string; role?: 'MANAGER' | 'VIEWER' } = {};
+    const updateData: { firstName?: string; lastName?: string; role?: 'MANAGER' | 'VIEWER'; status?: 'ACTIVE' | 'INACTIVE' | 'LOCKED' } = {};
     if (this.isPlausibleName(state.firstName) && state.firstName !== user.firstName) updateData.firstName = state.firstName;
     if (this.isPlausibleName(state.lastName) && state.lastName !== user.lastName) updateData.lastName = state.lastName;
     if (normalizeRole(state.role) && normalizeRole(state.role) !== user.role) updateData.role = normalizeRole(state.role);
+    if (normalizeStatus(state.status) && normalizeStatus(state.status) !== user.status) updateData.status = normalizeStatus(state.status);
 
     if (Object.keys(updateData).length === 0) {
       const reply = suggestedReply || `Aucune modification a apporter pour ${user.email}. Que souhaitez-vous changer ?`;
@@ -343,7 +373,7 @@ export class AgentChatService {
       data: { deletedAt: new Date(), status: 'INACTIVE' },
     });
 
-    const reply = `Compte de ${user.firstName} ${user.lastName} (${email}) archive.`;
+    const reply = `Compte de ${user.firstName} ${user.lastName} (${email}) desactive. Il reste visible dans la liste avec le statut Desactive.`;
     await this.saveInteraction(key, userId, sid, {}, history, reply);
     this.sessions.delete(key);
     return { sessionId: sid, type: 'success', message: reply };
@@ -355,6 +385,7 @@ export class AgentChatService {
       firstName: parsed.firstName ?? current.firstName,
       lastName: parsed.lastName ?? current.lastName,
       role: normalizeRole(parsed.role ?? current.role),
+      status: normalizeStatus(parsed.status ?? current.status),
       action: parsed.action ?? current.action,
       pendingDelete: current.pendingDelete,
     };
@@ -367,8 +398,8 @@ export class AgentChatService {
     if (state.action === 'update') {
       const missing: string[] = [];
       if (!state.email) missing.push('l\'email');
-      if (!state.firstName && !state.lastName && !state.role) {
-        missing.push('au moins un champ a modifier (prenom, nom ou role)');
+      if (!state.firstName && !state.lastName && !state.role && !state.status) {
+        missing.push('au moins un champ a modifier (prenom, nom, role ou statut)');
       }
       return missing;
     }
@@ -420,8 +451,8 @@ Tu as acces aux outils suivants pour repondre aux questions sur les donnees :
 
 Determine l'intention EXACTE parmi : onboard, update, delete, talk, tool.
 - onboard/creer/ajouter : creation d'un compte employe (besoin de email, prenom, nom, role).
-- update/modifier/changer : modification d'un compte existant (besoin de email + les champs a changer : prenom, nom, role).
-- delete/supprimer/archiver : suppression d'un compte (besoin uniquement de email).
+- update/modifier/changer : modification d'un compte existant (besoin de email + les champs a changer : prenom, nom, role ou statut).
+- delete/supprimer/archiver/desactiver : suppression ou desactivation d'un compte (besoin uniquement de email). "changer le statut en desactive" compte aussi comme une desactivation.
 - talk : salutation, remerciement, question simple, ou conversation generale sans besoin de donnees.
 - tool : l'utilisateur demande explicitement une liste, une recherche ou des statistiques sur les utilisateurs, etablissements ou contrats. Dans ce cas, choisis l'outil approprie et les bons parametres.
 
@@ -431,7 +462,7 @@ Reponds UNIQUEMENT en JSON strict (sans markdown, sans texte autour). Pour une a
 {"action":"tool","tool":"list_users|search_establishments|search_contracts","toolArgs":{...},"response":"..."}
 
 Pour les autres actions :
-{"action":"onboard|update|delete|talk","email":"...","firstName":"...","lastName":"...","role":"MANAGER|VIEWER","response":"..."}
+{"action":"onboard|update|delete|talk","email":"...","firstName":"...","lastName":"...","role":"MANAGER|VIEWER","status":"ACTIVE|INACTIVE|LOCKED","response":"..."}
 
 Regles pour response :
 - Sois concis, naturel et adapte-toi au contexte.
@@ -460,10 +491,16 @@ Regles pour response :
         firstName: json.firstName || fallback.firstName,
         lastName: json.lastName || fallback.lastName,
         role: json.role || fallback.role,
+        status: json.status || fallback.status,
         response: json.response,
         tool: json.tool,
         toolArgs: json.toolArgs,
       };
+
+      // "changer le statut en desactive" = desactivation -> on bascule vers l'action delete (confirmation).
+      if (merged.action === 'update' && normalizeStatus(merged.status) === 'INACTIVE') {
+        merged.action = 'delete';
+      }
 
       if (detectedTool?.action === 'tool' && detectedTool.tool) {
         merged.action = 'tool';
@@ -491,6 +528,13 @@ Regles pour response :
     const roleMatch = message.match(/\b(MANAGER|VIEWER)\b/i);
     if (roleMatch) {
       result.role = normalizeRole(roleMatch[1]);
+    }
+
+    // Statut : "désactivé", "inactif", "verrouillé", "bloqué", "actif", "réactivé"
+    const statusMatch = message.match(/\b(d[ée]sactiv\w*|inacti\w*|verrouill\w*|bloqu\w*|r[ée]activ\w*|activ\w*)\b/i);
+    if (statusMatch) {
+      const normalized = normalizeStatus(statusMatch[1]);
+      if (normalized) (result as { status?: string }).status = normalized;
     }
 
     // "prenom est X et le nom est Y"
@@ -550,12 +594,15 @@ Regles pour response :
       firstName: result.firstName || state.firstName,
       lastName: result.lastName || state.lastName,
       role: result.role || state.role,
+      status: (result as { status?: string }).status || state.status,
     };
   }
 
   private detectAction(message: string): ParsedIntent['action'] | undefined {
     const lower = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const firstVerb = lower.match(/^(?:je\s+(?:veux|voudrais|souhaite|vais|dois)\s+)?(annuler|abandonner|stop|cancel|supprimer|archiver|desactiver|delete|remove|modifier|changer|update|edit|mettre\s+a\s+jour|creer|ajouter|onboard|create|add|nouveau)\b/);
+    if (/\b(reactiv|debloqu)/.test(lower)) return 'update';
+    if (/\bverrouill|bloqu/.test(lower) && !/\bdebloqu/.test(lower)) return 'update';
+    const firstVerb = lower.match(/^(?:je\s+(?:veux|voudrais|souhaite|vais|dois)\s+)?(annuler|abandonner|stop|cancel|supprimer|archiver|desactiver|delete|remove|modifier|changer|changer|update|edit|mettre\s+a\s+jour|creer|ajouter|onboard|create|add|nouveau)\b/);
     if (firstVerb) {
       const verb = firstVerb[1];
       if (/\b(annuler|abandonner|stop|cancel)\b/.test(verb)) return 'cancel';
@@ -566,7 +613,7 @@ Regles pour response :
     // Detection secondaire si un verbe d'action apparait sans ambiguite (pas dans un nom propre isole)
     if (/\b(annuler|abandonner|stop|cancel)\b/.test(lower)) return 'cancel';
     if (/\b(supprimer|archiver|desactiver|delete|remove)\b/.test(lower) && !/\bcreer\b/.test(lower)) return 'delete';
-    if (/\b(modifier|changer|update|edit|mettre a jour)\b/.test(lower) && !/\bcreer\b/.test(lower)) return 'update';
+    if (/\b(modifier|changer|change|update|edit|mettre a jour)\b/.test(lower) && !/\bcreer\b/.test(lower)) return 'update';
     if (/\b(creer|ajouter|onboard|create|add|nouveau)\b/.test(lower)) return 'onboard';
     return undefined;
   }
@@ -621,7 +668,7 @@ Regles pour response :
 
   private cleanName(value: string): string {
     return value
-      .replace(/\b(avec|email|r[oô]le|manager|viewer|est|je|suis|un|compte|pour|nom|pr[eé]nom|employ[eé])\b/gi, '')
+      .replace(/\b(avec|email|r[oô]le|manager|viewer|est|je|suis|un|une|compte|pour|nom|pr[eé]nom|employ[eé]|le|la|les|de|du|des|en|au|aux|a|et|ou)\b/gi, '')
       .replace(/[,;:]/g, ' ')
       .trim();
   }
