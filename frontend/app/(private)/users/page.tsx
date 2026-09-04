@@ -1,9 +1,10 @@
 'use client';
 
 import type { ColumnDef } from '@tanstack/react-table';
-import { Bot, CalendarDays, CheckCircle, Copy, MessageSquarePlus, Mic, Pencil, Plus, Search, Send, Sparkles, Trash2, UserCog, UserPlus, UserRound, UserX, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowLeft, Bot, CalendarDays, CheckCircle, Clock3, Copy, History, MessageSquarePlus, Mic, Pencil, Plus, Search, Send, Settings, Sparkles, Trash2, UserCog, UserPlus, UserX, Volume2, VolumeX, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DataTable } from '@/components/data-table';
+import { BrandLogo } from '@/components/brand-logo';
 
 import { PageHeader } from '@/components/page-header';
 import { useCan } from '@/hooks/use-can';
@@ -88,6 +89,7 @@ export default function UsersPage() {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatCopied, setChatCopied] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   // Edit user modal state
@@ -176,6 +178,7 @@ export default function UsersPage() {
     setCurrentSessionId(id);
     setMessages([{ role: 'agent', content: WELCOME_MESSAGE, createdAt: Date.now() }]);
     setChatInput('');
+    setHistoryOpen(false);
   };
 
   const selectConversation = (id: string) => {
@@ -185,6 +188,7 @@ export default function UsersPage() {
     if (conv) {
       setMessages([...conv.messages]);
     }
+    setHistoryOpen(false);
   };
 
   const deleteConversation = async (e: React.MouseEvent, id: string) => {
@@ -345,7 +349,12 @@ export default function UsersPage() {
       },
       { accessorKey: 'email', header: 'E-mail professionnel' },
       { accessorKey: 'role', header: 'Rôle', cell: ({ row }) => <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">{row.original.role}</span> },
-      { accessorKey: 'status', header: 'Statut', cell: ({ row }) => <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">{row.original.status}</span> },
+      { accessorKey: 'status', header: 'Statut', cell: ({ row }) => {
+        const s = row.original.status;
+        const styles = s === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : s === 'LOCKED' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700';
+        const label = s === 'ACTIVE' ? 'Actif' : s === 'LOCKED' ? 'Verrouillé' : 'Désactivé';
+        return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${styles}`}>{label}</span>;
+      } },
       {
         id: 'actions',
         header: 'Actions',
@@ -394,8 +403,8 @@ export default function UsersPage() {
 
       {/* Agent workspace */}
       {chatOpen && (
-        <section className="fixed inset-0 z-50 flex min-h-0 bg-white lg:left-[272px] lg:z-30" role="dialog" aria-modal="true" aria-label="Assistant BH">
-          <aside className="hidden w-[286px] shrink-0 flex-col border-r border-slate-200 bg-white md:flex">
+        <section className="fixed inset-0 z-50 flex min-h-0 flex-col bg-[#fcfcfb]" role="dialog" aria-modal="true" aria-label="Assistant BH">
+          <aside className="hidden">
             <div className="flex h-20 items-center justify-between border-b border-slate-200 px-5">
               <div className="flex items-center gap-2.5 text-navy"><Bot size={20} /><h2 className="font-bold">Assistant BH</h2></div>
               <button onClick={startNewConversation} className="icon-btn" title="Nouvelle conversation" aria-label="Nouvelle conversation"><MessageSquarePlus size={18} /></button>
@@ -421,8 +430,36 @@ export default function UsersPage() {
             <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-4 text-xs text-slate-500"><CalendarDays size={15} />{new Date().toLocaleDateString('fr-TN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
           </aside>
 
-          <div className="flex min-w-0 flex-1 flex-col bg-white">
-            <header className="flex h-20 shrink-0 items-center justify-between border-b border-slate-200 px-4 md:px-8">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#fcfcfb]">
+            <header className="relative grid h-[84px] shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-slate-200/80 bg-white px-4 sm:px-8">
+              <div className="flex min-w-0 items-center gap-4 sm:gap-8">
+                <BrandLogo className="hidden w-[68px] sm:block" />
+                <button onClick={() => setChatOpen(false)} className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-navy transition hover:border-blue-200 hover:bg-blue-50/60" aria-label="Retour aux utilisateurs"><ArrowLeft size={18} /><span className="hidden sm:inline">Utilisateurs</span></button>
+              </div>
+              <div className="flex items-center gap-2 text-navy">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-blue-50"><Bot size={18} /></span>
+                <h2 className="hidden text-lg font-bold sm:block">Assistant de gestion</h2>
+                <h2 className="text-base font-bold sm:hidden">Assistant BH</h2>
+              </div>
+              <div className="relative flex items-center justify-end gap-2">
+                <button onClick={() => setHistoryOpen((open) => !open)} className={`flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition ${historyOpen ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-navy hover:border-blue-200 hover:bg-slate-50'}`} aria-expanded={historyOpen} aria-haspopup="menu"><Clock3 size={17} /><span className="hidden md:inline">Historique</span></button>
+                {speechSupported && <button type="button" onClick={() => { if (voiceMode) cancel(); setVoiceMode((v) => !v); }} className={`grid h-11 w-11 place-items-center rounded-xl border transition ${voiceMode ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-slate-200 bg-white text-navy hover:bg-slate-50'}`} title={voiceMode ? 'Arrêter le mode vocal' : 'Démarrer le mode vocal'} aria-label={voiceMode ? 'Arrêter le mode vocal' : 'Démarrer le mode vocal'}>{voiceMode ? <Volume2 size={18} /> : <VolumeX size={18} />}</button>}
+                <button type="button" className="hidden h-11 w-11 place-items-center rounded-xl border border-slate-200 bg-white text-navy hover:bg-slate-50 sm:grid" aria-label="Paramètres de l’assistant"><Settings size={18} /></button>
+                {historyOpen && (
+                  <div className="absolute right-0 top-[56px] z-20 w-[min(340px,calc(100vw-32px))] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(6,38,80,0.14)]" role="menu" aria-label="Conversations récentes">
+                    <div className="mb-2 flex items-center justify-between px-2 py-1"><p className="text-xs font-semibold text-slate-500">Conversations récentes</p><button onClick={startNewConversation} className="grid h-8 w-8 place-items-center rounded-lg text-brandRed hover:bg-red-50" aria-label="Nouvelle conversation"><Plus size={17} /></button></div>
+                    {conversations.length === 0 ? <p className="px-2 py-5 text-sm text-slate-400">Aucune conversation enregistrée</p> : (
+                      <ul className="max-h-[360px] space-y-1 overflow-y-auto">
+                        {conversations.slice().sort((a, b) => b.updatedAt - a.updatedAt).map((conv) => (
+                          <li key={conv.id}><button onClick={() => selectConversation(conv.id)} className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${conv.id === currentSessionId ? 'bg-blue-50 text-navy' : 'text-slate-600 hover:bg-slate-50'}`} role="menuitem"><History size={15} className="shrink-0 text-blue-600" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{conv.title || 'Nouvelle conversation'}</span><span className="mt-1 block text-[11px] text-slate-400">{new Date(conv.updatedAt).toLocaleString('fr-TN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></span><span onClick={(e) => deleteConversation(e, conv.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-400 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100" role="button" aria-label="Supprimer la conversation"><Trash2 size={13} /></span></button></li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            </header>
+            <header className="hidden">
               <div className="flex items-center gap-3 md:hidden"><Bot size={20} className="text-navy" /><h2 className="font-bold text-navy">Assistant BH</h2></div>
               <div className="hidden md:block"><p className="text-sm font-semibold text-navy">Espace de gestion assistée</p><p className="mt-0.5 text-xs text-slate-500">Créez et gérez les comptes collaborateurs en toute sécurité</p></div>
               <div className="flex items-center gap-2">
@@ -444,14 +481,14 @@ export default function UsersPage() {
               </div>
             </header>
             <div className="flex-1 overflow-y-auto">
-              <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 md:px-8 md:py-8">
-                <div className="flex-1 space-y-6">
+              <div className="mx-auto flex min-h-full w-full max-w-[820px] flex-col px-4 py-8 sm:px-6 sm:py-12">
+                <div className="flex-1 space-y-8">
                   {messages.map((msg, idx) => (
                     <div key={idx} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {msg.role === 'agent' && <div className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-navy text-white"><Bot size={17} /></div>}
-                      <div className={`max-w-[780px] ${msg.role === 'user' ? 'rounded-xl bg-blue-50 px-5 py-4 text-navy' : ''}`}>
-                        <p className={`whitespace-pre-wrap text-sm leading-6 ${msg.isError ? 'text-red-700' : 'text-slate-700'}`}>{msg.content}</p>
-                        <time className="mt-1.5 block text-right text-[10px] text-slate-400">{new Date(msg.createdAt).toLocaleTimeString('fr-TN', { hour: '2-digit', minute: '2-digit' })}</time>
+                      {msg.role === 'agent' && <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-navy text-white"><Bot size={16} /></div>}
+                      <div className={`max-w-[680px] ${msg.role === 'user' ? 'rounded-2xl bg-blue-50 px-5 py-3.5 text-navy' : 'pt-1'}`}>
+                        <p className={`whitespace-pre-wrap text-[15px] leading-7 ${msg.isError ? 'text-red-700' : 'text-slate-700'}`}>{msg.content}</p>
+                        <time className={`mt-1.5 block text-[10px] text-slate-400 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>{new Date(msg.createdAt).toLocaleTimeString('fr-TN', { hour: '2-digit', minute: '2-digit' })}</time>
                         {msg.temporaryPassword && (
                           <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mot de passe temporaire</p>
@@ -459,39 +496,38 @@ export default function UsersPage() {
                           </div>
                         )}
                       </div>
-                      {msg.role === 'user' && <div className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-navy"><UserRound size={17} /></div>}
                     </div>
                   ))}
                   {chatLoading && <div className="flex items-center gap-3 text-sm text-slate-500"><div className="grid h-9 w-9 place-items-center rounded-full bg-navy text-white"><Bot size={17} /></div><span>L&apos;agent prépare sa réponse…</span></div>}
                   <div ref={chatEndRef} />
                 </div>
-                <div className="sticky bottom-0 mt-8 border-t border-slate-100 bg-white pb-2 pt-5">
+                <div className="sticky bottom-0 mt-10 bg-[#fcfcfb] pb-4 pt-5">
                   <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-sm font-bold text-navy">Que souhaitez-vous faire ?</p>
-                      <p className="mt-1 text-xs text-slate-500">Choisissez une action ou formulez votre demande.</p>
+                      <p className="text-base font-bold text-navy">Bonjour ! Comment puis-je vous aider aujourd’hui ?</p>
+                      <p className="mt-1 text-sm text-slate-500">Choisissez une action ou décrivez votre demande.</p>
                     </div>
                     <Sparkles size={19} className="shrink-0 text-blue-600" aria-hidden="true" />
                   </div>
-                  <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {CHAT_SUGGESTIONS.map(({ label, icon: Icon }) => (
                       <button
                         key={label}
                         type="button"
                         onClick={() => setChatInput(label)}
                         aria-pressed={chatInput === label}
-                        className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition focus-visible:outline-none ${
+                        className={`flex min-h-[68px] items-center gap-3 rounded-xl px-4 py-3 text-left transition focus-visible:outline-none ${
                           chatInput === label
-                            ? 'border-blue-300 bg-blue-50 text-blue-800 shadow-sm'
-                            : 'border-slate-200 bg-white text-navy hover:border-blue-200 hover:bg-slate-50'
+                            ? 'bg-blue-50 text-blue-800'
+                            : 'bg-slate-50/80 text-navy hover:bg-blue-50/70'
                         }`}
                       >
-                        <Icon size={16} className="shrink-0 text-blue-600" aria-hidden="true" />
-                        <span>{label}</span>
+                        <Icon size={21} className={`shrink-0 ${label.startsWith('D') ? 'text-red-500' : 'text-blue-600'}`} aria-hidden="true" />
+                        <span className="text-sm font-semibold">{label}</span>
                       </button>
                     ))}
                   </div>
-                  <form onSubmit={sendChatMessage} className="rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_10px_35px_rgba(15,42,82,0.10)] transition focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50">
+                  <form onSubmit={sendChatMessage} className="rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_10px_30px_rgba(6,38,80,0.08)] transition focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50">
                     <div className="flex items-center gap-2">
                       <div className="ml-1 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-navy" aria-hidden="true">
                         <Sparkles size={17} />
@@ -501,7 +537,7 @@ export default function UsersPage() {
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       placeholder={recording ? 'Parlez maintenant...' : 'Tapez votre message…'}
-                      className="h-11 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                      className="h-11 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus-visible:!outline-none focus-visible:ring-0"
                       disabled={chatLoading || recording}
                       autoFocus
                     />
@@ -521,7 +557,7 @@ export default function UsersPage() {
                         <Mic size={17} />
                       </button>
                     )}
-                      <button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brandRed text-white shadow-sm transition hover:bg-[#c9151c] hover:shadow-md disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none" disabled={chatLoading || recording || !chatInput.trim()} aria-label="Envoyer"><Send size={17} /></button>
+                      <button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none" disabled={chatLoading || recording || !chatInput.trim()} aria-label="Envoyer"><Send size={17} /></button>
                     </div>
                     <div className="flex items-center justify-between px-2 pb-0.5 pt-1.5 text-[10px] text-slate-400">
                       <span>{recording ? 'Enregistrement en cours…' : chatLoading ? 'Réponse en cours…' : 'Assistant sécurisé BH Assurance'}</span>

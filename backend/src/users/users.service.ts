@@ -9,8 +9,9 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: PaginationDto) {
+    // On garde les comptes désactivés visibles dans la liste (statut INACTIVE),
+    // seule la recherche et la pagination s'appliquent.
     const where = {
-      deletedAt: null,
       ...(query.search
         ? {
             OR: [
