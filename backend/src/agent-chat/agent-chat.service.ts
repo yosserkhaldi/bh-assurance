@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
 import { AgentToolsService } from './agent-tools.service';
+import { AgentSessionStorageService } from './agent-session-storage.service';
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -31,8 +32,6 @@ interface SessionState {
   role?: string;
   action?: 'onboard' | 'update' | 'delete';
   pendingDelete?: boolean;
-  pendingUpdate?: boolean;
-  updateSummary?: string;
 }
 
 export interface ChatMessage {
@@ -71,6 +70,7 @@ export class AgentChatService {
     private readonly onboarding: OnboardingService,
     private readonly prisma: PrismaService,
     private readonly tools: AgentToolsService,
+    private readonly sessionStorage: AgentSessionStorageService,
   ) {}
 
   async chat(userId: string, sessionId: string | undefined, message: string) {
@@ -81,9 +81,7 @@ export class AgentChatService {
     let history = this.histories.get(key) || [];
 
     if (sessionId && history.length === 0) {
-      const existing = await this.prisma.agentChatSession.findUnique({
-        where: { userId_sessionId: { userId, sessionId: sid } },
-      });
+      const existing = this.sessionStorage.get(userId, sid);
       if (existing) {
         history = (existing.messages as unknown) as ChatMessage[];
       }
@@ -183,7 +181,7 @@ export class AgentChatService {
       }
 
       if (state.action === 'update') {
-        return this.handleUpdate(userId, state, key, history, sid, message, parsed.response);
+        return this.handleUpdate(userId, state, key, history, sid, parsed.response);
       }
 
       return this.handleOnboard(userId, state, key, history, sid, parsed.response);
@@ -228,22 +226,12 @@ export class AgentChatService {
     };
   }
 
-  private isValidName(value?: string): boolean {
-    if (!value || value.length < 2) return false;
-    const forbidden = /\b(modifier|changer|update|edit|mettre a jour|users|user|employe|compte|prenom|nom|role|email|avec|est|je|suis|un|une|le|la|les|de|des|du|a|en|pour)\b/gi;
-    const cleaned = value.replace(forbidden, '').trim();
-    if (cleaned.length < 2) return false;
-    if (!/^[A-Za-zÀ-ÿ\-\s']+$/i.test(cleaned)) return false;
-    return true;
-  }
-
   private async handleUpdate(
     userId: string,
     state: SessionState,
     key: string,
     history: ChatMessage[],
     sid: string,
-    message: string,
     suggestedReply?: string,
   ) {
     const user = await this.prisma.user.findFirst({
@@ -252,46 +240,15 @@ export class AgentChatService {
     });
     if (!user) throw new NotFoundException('Aucun compte actif trouve avec cet email.');
 
-    if (state.pendingUpdate) {
-      const lower = message.toLowerCase().trim();
-      if (/\b(oui|confirmer|valider|ok|yes)\b/.test(lower)) {
-        // on applique
-      } else if (/\b(non|annuler|stop|no)\b/.test(lower)) {
-        const reply = 'Modification annulee.';
-        await this.saveInteraction(key, userId, sid, {}, history, reply);
-        this.sessions.delete(key);
-        return { sessionId: sid, type: 'talk', message: reply };
-      } else {
-        const reply = state.updateSummary || 'Veuillez confirmer la modification (oui / non).';
-        await this.saveInteraction(key, userId, sid, state, history, reply);
-        return { sessionId: sid, type: 'talk', message: reply };
-      }
-    }
-
     const updateData: { firstName?: string; lastName?: string; role?: 'MANAGER' | 'VIEWER' } = {};
-    if (this.isValidName(state.firstName) && state.firstName !== user.firstName) updateData.firstName = state.firstName;
-    if (this.isValidName(state.lastName) && state.lastName !== user.lastName) updateData.lastName = state.lastName;
-    const newRole = normalizeRole(state.role);
-    if (newRole && newRole !== user.role) updateData.role = newRole;
+    if (state.firstName && state.firstName !== user.firstName) updateData.firstName = state.firstName;
+    if (state.lastName && state.lastName !== user.lastName) updateData.lastName = state.lastName;
+    if (normalizeRole(state.role) && normalizeRole(state.role) !== user.role) updateData.role = normalizeRole(state.role);
 
     if (Object.keys(updateData).length === 0) {
-      const reply = suggestedReply || `Aucune modification a apporter pour ${user.email}. Que souhaitez-vous changer ? (prenom, nom ou role)`;
+      const reply = suggestedReply || `Aucune modification a apporter pour ${user.email}. Que souhaitez-vous changer ?`;
       await this.saveInteraction(key, userId, sid, state, history, reply);
       return { sessionId: sid, type: 'talk', message: reply };
-    }
-
-    const changes: string[] = [];
-    if (updateData.firstName) changes.push(`prenom : "${user.firstName}" -> "${updateData.firstName}"`);
-    if (updateData.lastName) changes.push(`nom : "${user.lastName}" -> "${updateData.lastName}"`);
-    if (updateData.role) changes.push(`role : "${user.role}" -> "${updateData.role}"`);
-    const summary = `Modifier le compte de ${user.firstName} ${user.lastName} (${user.email}) : ${changes.join(', ')}. Confirmez-vous ? (oui / non)`;
-
-    if (!state.pendingUpdate) {
-      state.pendingUpdate = true;
-      state.updateSummary = summary;
-      this.sessions.set(key, state);
-      await this.saveInteraction(key, userId, sid, state, history, summary);
-      return { sessionId: sid, type: 'confirm_update', message: summary, email: user.email };
     }
 
     await this.prisma.user.update({ where: { id: user.id }, data: updateData });
@@ -337,8 +294,6 @@ export class AgentChatService {
       role: normalizeRole(parsed.role ?? current.role),
       action: parsed.action ?? current.action,
       pendingDelete: current.pendingDelete,
-      pendingUpdate: current.pendingUpdate,
-      updateSummary: current.updateSummary,
     };
   }
 
@@ -469,9 +424,8 @@ Regles pour response :
       result.email = emailMatch[1].toLowerCase();
     }
 
-    // Role : on cherche dans le message prive de l'email pour eviter de confondre avec viewer@bh-assurance.tn
-    const textWithoutEmail = emailMatch ? message.replace(emailMatch[0], ' ') : message;
-    const roleMatch = textWithoutEmail.match(/\b(MANAGER|VIEWER)\b/i);
+    // Role
+    const roleMatch = message.match(/\b(MANAGER|VIEWER)\b/i);
     if (roleMatch) {
       result.role = normalizeRole(roleMatch[1]);
     }
@@ -591,7 +545,7 @@ Regles pour response :
 
   private cleanName(value: string): string {
     return value
-      .replace(/\b(avec|email|r[oô]le|manager|viewer|admin|est|je|suis|un|une|compte|pour|nom|pr[eé]nom|employ[eé]|users|user|modifier|changer|update|mettre a jour|changement|nouveau|ancien|devenir|passer|en|a|de|des|du|le|la|les)\b/gi, '')
+      .replace(/\b(avec|email|r[oô]le|manager|viewer|est|je|suis|un|compte|pour|nom|pr[eé]nom|employ[eé])\b/gi, '')
       .replace(/[,;:]/g, ' ')
       .trim();
   }
@@ -610,32 +564,21 @@ Regles pour response :
 
   private async persistSession(userId: string, sessionId: string, history: ChatMessage[]) {
     const title = history.find((h) => h.role === 'user')?.content.slice(0, 120) || 'Conversation agent';
-    await this.prisma.agentChatSession.upsert({
-      where: { userId_sessionId: { userId, sessionId } },
-      create: { userId, sessionId, title, messages: history as any },
-      update: { title, messages: history as any },
-    });
+    this.sessionStorage.save(userId, sessionId, title, history as unknown[]);
   }
 
   async listSessions(userId: string) {
-    const sessions = await this.prisma.agentChatSession.findMany({
-      where: { userId },
-      select: { id: true, sessionId: true, title: true, messages: true, updatedAt: true },
-      orderBy: { updatedAt: 'desc' },
-      take: 50,
-    });
+    const sessions = this.sessionStorage.list(userId);
     return sessions.map((s) => ({
       id: s.sessionId,
       title: s.title || 'Conversation',
-      updatedAt: s.updatedAt.toISOString(),
-      messages: ((s.messages as unknown) as ChatMessage[]) || [],
+      updatedAt: s.updatedAt,
+      messages: (s.messages as unknown as ChatMessage[]) || [],
     }));
   }
 
   async deleteSession(userId: string, sessionId: string) {
-    await this.prisma.agentChatSession.deleteMany({
-      where: { userId, sessionId },
-    });
+    this.sessionStorage.delete(userId, sessionId);
     this.sessions.delete(`${userId}:${sessionId}`);
     this.histories.delete(`${userId}:${sessionId}`);
   }

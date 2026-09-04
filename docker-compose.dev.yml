@@ -14,6 +14,7 @@ services:
       AGENT_API_KEY: ${AGENT_API_KEY:-agent-api-key-change-me-in-production}
       PORT: 3001
       NODE_ENV: development
+      AGENT_SESSIONS_DIR: /app/backend/data/agent-sessions
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
     ports:

@@ -7,3 +7,4 @@ coverage/
 *.log
 backend/generated/
 backend/uploads/
+backend/data/
