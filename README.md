@@ -96,6 +96,11 @@ prisma/
 
 La conception detaillee est disponible dans `docs/DATABASE_DESIGN.md`.
 
+## Documentation complete
+
+Le bilan fonctionnel et technique de toutes les fonctionnalites realisees est
+disponible dans `docs/DOCUMENTATION_PROJET_COMPLETE.md`.
+
 ## Verification
 
 ```bash
