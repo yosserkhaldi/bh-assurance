@@ -34,6 +34,8 @@ interface SessionState {
   status?: string;
   action?: 'onboard' | 'update' | 'delete' | 'purge';
   pendingDelete?: boolean;
+  pendingChoice?: boolean;
+  ambiguousDelete?: boolean;
 }
 
 export interface ChatMessage {
@@ -176,6 +178,38 @@ export class AgentChatService {
         }
       }
 
+      // "supprimer" seul est ambigu : on demande si c'est une desactivation ou une purge.
+      if (state.action === 'delete' && !state.pendingDelete && !state.pendingChoice && this.isAmbiguousDelete(message)) {
+        state = { ...state, pendingChoice: true };
+        this.sessions.set(key, state);
+        const who = state.email ? ` le compte ${state.email}` : ' ce compte';
+        const reply = `Souhaitez-vous desactiver${who} (il restera visible, statut Desactive) ou le supprimer DEFINITIVEMENT (action irreversible) ? Repondez "desactiver" ou "definitivement".`;
+        await this.saveInteraction(key, userId, sid, state, history, reply);
+        return { sessionId: sid, type: 'talk', message: reply };
+      }
+
+      // Reponse a la question desactiver / definitivement.
+      if (state.pendingChoice) {
+        const lower = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (/\b(definitivement|pour de vrai|effacer|purge)\b/.test(lower)) {
+          state = { ...state, action: 'purge', pendingChoice: false };
+          this.sessions.set(key, state);
+        } else if (/\b(desactiv|archiv|inactif)/.test(lower)) {
+          state = { ...state, action: 'delete', pendingChoice: false };
+          this.sessions.set(key, state);
+        } else if (/\b(annuler|cancel|stop)\b/.test(lower)) {
+          state = {};
+          this.sessions.delete(key);
+          const reply = 'Action annulee.';
+          await this.saveInteraction(key, userId, sid, state, history, reply);
+          return { sessionId: sid, type: 'talk', message: reply };
+        } else {
+          const reply = 'Merci de repondre "desactiver" (reversible) ou "definitivement" (irreversible), ou "annuler".';
+          await this.saveInteraction(key, userId, sid, state, history, reply);
+          return { sessionId: sid, type: 'talk', message: reply };
+        }
+      }
+
       const missing = this.getMissingFields(state);
       if (missing.length > 0) {
         const reply = parsed.response || this.askForMissing(missing, state);
@@ -263,6 +297,14 @@ export class AgentChatService {
       this.histories.set(key, history);
       return { sessionId: sid, type: 'error', message: reply };
     }
+  }
+
+  // "supprimer" tout court est ambigu (desactiver ou purge ?). "desactiver"/"definitivement" ne le sont pas.
+  private isAmbiguousDelete(message: string): boolean {
+    const lower = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const hasDeleteVerb = /\b(supprimer|delete|remove|efface)\b/.test(lower);
+    const hasQualifier = /\b(definitivement|completement|pour de vrai|desactiv|archiver|inactif|purge)\b/.test(lower);
+    return hasDeleteVerb && !hasQualifier;
   }
 
   private async resolveUserByName(message: string, firstName?: string, lastName?: string): Promise<{ email?: string; firstName?: string; lastName?: string; candidates: string[] }> {
@@ -438,6 +480,8 @@ export class AgentChatService {
       status: normalizeStatus(parsed.status ?? current.status),
       action: parsed.action ?? current.action,
       pendingDelete: current.pendingDelete,
+      pendingChoice: current.pendingChoice,
+      ambiguousDelete: current.ambiguousDelete,
     };
   }
 
