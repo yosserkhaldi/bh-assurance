@@ -36,6 +36,7 @@ interface SessionState {
   pendingDelete?: boolean;
   pendingChoice?: boolean;
   ambiguousDelete?: boolean;
+  pendingWrite?: { tool: string; args: Record<string, any>; summary: string };
 }
 
 export interface ChatMessage {
@@ -56,6 +57,7 @@ function normalizeRole(role?: string): 'MANAGER' | 'VIEWER' | undefined {
 
 function normalizeAction(action?: string): ParsedIntent['action'] {
   const a = action?.toLowerCase().replace(/é/g, 'e');
+  if (a === 'tool') return 'tool';
   if (a === 'onboard' || a === 'create' || a === 'add' || a === 'creer' || a === 'ajouter') return 'onboard';
   if (a === 'update' || a === 'modify' || a === 'edit' || a === 'modifier' || a === 'changer') return 'update';
   if (a === 'delete' || a === 'remove' || a === 'supprimer' || a === 'archiver' || a === 'desactiver') return 'delete';
@@ -87,7 +89,7 @@ export class AgentChatService {
     private readonly sessionStorage: AgentSessionStorageService,
   ) {}
 
-  async chat(userId: string, sessionId: string | undefined, message: string) {
+  async chat(userId: string, role: 'ADMIN' | 'MANAGER' | 'VIEWER', sessionId: string | undefined, message: string) {
     const sid = sessionId || generateSessionId();
     const key = `${userId}:${sid}`;
 
@@ -104,9 +106,27 @@ export class AgentChatService {
     history.push({ role: 'user', content: message });
 
     try {
+      // Confirmation d'une ecriture en attente (add_vehicle...) : "oui" execute, "non" annule.
+      if (state.pendingWrite) {
+        const lower = message.toLowerCase().trim();
+        if (/\b(oui|confirmer|valider|ok|yes)\b/.test(lower)) {
+          return this.executePendingWrite(userId, state, key, history, sid);
+        }
+        if (/\b(non|annuler|stop|no)\b/.test(lower)) {
+          const reply = 'Action annulee. Rien n\'a ete modifie.';
+          state = { ...state, pendingWrite: undefined };
+          this.sessions.set(key, state);
+          await this.saveInteraction(key, userId, sid, state, history, reply);
+          return { sessionId: sid, type: 'talk', message: reply };
+        }
+      }
+
       // Detection locale rapide des recherches avant meme d'appeler Gemini
       const quickTool = this.detectTool(message);
       if (quickTool?.action === 'tool' && quickTool.tool) {
+        if (quickTool.tool === 'add_vehicle') {
+          return this.prepareWrite(userId, role, quickTool.tool, quickTool.toolArgs || {}, key, history, sid);
+        }
         const toolResult = await this.executeTool(quickTool.tool, quickTool.toolArgs || {});
         const reply = this.formatToolReply(quickTool.tool, toolResult);
         await this.saveInteraction(key, userId, sid, state, history, reply);
@@ -131,6 +151,9 @@ export class AgentChatService {
       }
 
       if (parsed.action === 'tool' && parsed.tool) {
+        if (parsed.tool === 'add_vehicle') {
+          return this.prepareWrite(userId, role, parsed.tool, parsed.toolArgs || {}, key, history, sid);
+        }
         const toolResult = await this.executeTool(parsed.tool, parsed.toolArgs || {});
         const reply = this.formatToolReply(parsed.tool, toolResult, parsed.response);
         await this.saveInteraction(key, userId, sid, state, history, reply);
@@ -482,6 +505,7 @@ export class AgentChatService {
       pendingDelete: current.pendingDelete,
       pendingChoice: current.pendingChoice,
       ambiguousDelete: current.ambiguousDelete,
+      pendingWrite: current.pendingWrite,
     };
   }
 
@@ -542,6 +566,9 @@ Tu as acces aux outils suivants pour repondre aux questions sur les donnees :
 - list_users({ role?, status?, query?, limit? }) : liste les utilisateurs actifs. role peut etre MANAGER, VIEWER ou ADMIN. status peut etre ACTIVE, INACTIVE ou LOCKED. query recherche un prenom, un nom ou un email (ex: "mariem").
 - search_establishments({ query?, limit? }) : recherche des etablissements par nom, email, telephone ou matricule fiscal.
 - search_contracts({ query?, establishmentName?, status?, limit? }) : recherche des contrats par reference ou vehicule, ou filtre par nom d'etablissement ou statut.
+- get_contract({ number }) : detail complet d'un contrat (vehicules, echeances, avenants). Ex: "detail du contrat 216".
+- get_vehicle({ registration }) : detail d'un vehicule et de son contrat. Ex: "vehicule 145 TU 8890".
+- add_vehicle({ contractNumber, registrationNumber, make, model, year, type? }) : ajoute un vehicule a un contrat existant. Ex: "ajoute le vehicule 145 TU 8890, Peugeot Partner 2022 au contrat 216". L'ajout sera toujours soumis a une confirmation humaine.
 
 Determine l'intention EXACTE parmi : onboard, update, delete, purge, talk, tool.
 - onboard/creer/ajouter : creation d'un compte employe (besoin de email, prenom, nom, role).
@@ -554,7 +581,7 @@ Determine l'intention EXACTE parmi : onboard, update, delete, purge, talk, tool.
 Extrais les champs s'ils sont presents dans le message.
 
 Reponds UNIQUEMENT en JSON strict (sans markdown, sans texte autour). Pour une action tool, le format est :
-{"action":"tool","tool":"list_users|search_establishments|search_contracts","toolArgs":{...},"response":"..."}
+{"action":"tool","tool":"list_users|search_establishments|search_contracts|get_contract|get_vehicle|add_vehicle","toolArgs":{...},"response":"..."}
 
 Pour les autres actions :
 {"action":"onboard|update|delete|purge|talk","email":"...","firstName":"...","lastName":"...","role":"MANAGER|VIEWER","status":"ACTIVE|INACTIVE|LOCKED","response":"..."}
@@ -717,6 +744,37 @@ Regles pour response :
 
   private detectTool(message: string): Partial<ParsedIntent> | undefined {
     const lower = message.toLowerCase();
+
+    // "ajoute le vehicule 145 TU 8890, Peugeot Partner 2022 au contrat 216"
+    const addVehicleMatch = message.match(/(?:ajoute|ajouter|creer|crée)\s+(?:le\s+|un\s+)?v[ée]hicule\s+([^,]+?)(?:,|\s+au\s+contrat|\s+dans\s+(?:le\s+)?contrat|$)/i);
+    const toContractMatch = message.match(/(?:au|dans|sur le)\s+contrat\s+([A-Za-z0-9\-]+)/i);
+    const makeModelYearMatch = message.match(/,\s*([A-Za-zÀ-ÿ]+)\s+([A-Za-zÀ-ÿ0-9 .\-]+?)(?:\s+(\d{4}))?(?:\s*,?\s*(?:au|dans)\s+(?:le\s+)?contrat|$)/i);
+    if (addVehicleMatch && toContractMatch) {
+      return {
+        action: 'tool',
+        tool: 'add_vehicle',
+        toolArgs: {
+          registrationNumber: addVehicleMatch[1].trim(),
+          contractNumber: toContractMatch[1].trim(),
+          make: makeModelYearMatch?.[1] || 'Non renseigne',
+          model: makeModelYearMatch?.[2]?.trim() || 'Non renseigne',
+          year: makeModelYearMatch?.[3] ? Number(makeModelYearMatch[3]) : new Date().getFullYear(),
+        },
+      };
+    }
+
+    // "detail du contrat 216" / "contrat 216"
+    const contractDetailMatch = message.match(/(?:detail|infos?|fiche|etat)?\s*(?:du\s+|de\s+)?contrat\s+([A-Za-z0-9][A-Za-z0-9\-]{1,30})/i);
+    if (contractDetailMatch && /\b(contrat)\b/.test(lower) && !/\b(liste|recherche|cherche|trouve|donne|affiche|ajoute|ajouter|renouvelle?)\b/.test(lower)) {
+      return { action: 'tool', tool: 'get_contract', toolArgs: { number: contractDetailMatch[1].trim() } };
+    }
+
+    // "vehicule 145 TU 8890" (hors contexte "ajouter")
+    const vehicleDetailMatch = message.match(/v[ée]hicule\s+([A-Z0-9][A-Z0-9 ]{2,20})/i);
+    if (vehicleDetailMatch && !/\b(ajoute|ajouter|liste|recherche|cherche|trouve|donne|affiche|combien)\b/.test(lower)) {
+      return { action: 'tool', tool: 'get_vehicle', toolArgs: { registration: vehicleDetailMatch[1].trim() } };
+    }
+
     const isSearchRequest = /\b(liste|listes|donne|donnez|donner|affiche|afficher|recherche|rechercher|trouve|trouver|cherche|chercher|combien|qui sont)\b/.test(lower);
     if (!isSearchRequest) return undefined;
 
@@ -811,9 +869,123 @@ Regles pour response :
         return this.tools.searchEstablishments(args);
       case 'search_contracts':
         return this.tools.searchContracts(args);
+      case 'get_contract':
+        return this.tools.getContract(args as { number: string });
+      case 'get_vehicle':
+        return this.tools.getVehicle(args as { registration: string });
       default:
         throw new Error(`Outil inconnu : ${toolName}`);
     }
+  }
+
+  // Phase 1 : preparation d'une ecriture avec confirmation humaine.
+  private async prepareWrite(
+    userId: string,
+    role: 'ADMIN' | 'MANAGER' | 'VIEWER',
+    tool: string,
+    args: Record<string, any>,
+    key: string,
+    history: ChatMessage[],
+    sid: string,
+  ) {
+    if (role === 'VIEWER') {
+      const reply = 'Les modifications via l\'agent sont reservees aux ADMIN et MANAGER. Votre compte VIEWER est en lecture seule.';
+      await this.saveInteraction(key, userId, sid, {}, history, reply);
+      this.sessions.delete(key);
+      return { sessionId: sid, type: 'error', message: reply };
+    }
+
+    if (tool === 'add_vehicle') {
+      const missing: string[] = [];
+      if (!args.contractNumber) missing.push('le numero du contrat');
+      if (!args.registrationNumber) missing.push('l\'immatriculation');
+      if (!args.make || args.make === 'Non renseigne') missing.push('la marque');
+      if (!args.model || args.model === 'Non renseigne') missing.push('le modele');
+      if (!args.year) missing.push('l\'annee');
+      if (missing.length > 0) {
+        const reply = `Pour ajouter le vehicule, merci de preciser : ${missing.join(', ')}. Exemple : "ajoute le vehicule 145 TU 8890, Peugeot Partner 2022 au contrat 216".`;
+        await this.saveInteraction(key, userId, sid, {}, history, reply);
+        return { sessionId: sid, type: 'talk', message: reply };
+      }
+
+      const contract = await this.prisma.contract.findFirst({
+        where: { number: { equals: String(args.contractNumber), mode: 'insensitive' }, deletedAt: null },
+        select: { number: true, establishment: { select: { businessName: true } } },
+      });
+      if (!contract) {
+        const reply = `Aucun contrat actif trouve avec le numero ${args.contractNumber}. Verifiez le numero ou creez le contrat depuis l'interface Contrats.`;
+        await this.saveInteraction(key, userId, sid, {}, history, reply);
+        return { sessionId: sid, type: 'error', message: reply };
+      }
+
+      const summary = `ajouter le vehicule ${String(args.registrationNumber).toUpperCase()} (${args.make} ${args.model}, ${args.year}) au contrat ${contract.number} — ${contract.establishment?.businessName || 'Etablissement inconnu'}`;
+      const state: SessionState = { pendingWrite: { tool, args, summary } };
+      this.sessions.set(key, state);
+      const reply = `Je vais ${summary}. Confirmez-vous ? (oui / non)`;
+      await this.saveInteraction(key, userId, sid, state, history, reply);
+      return { sessionId: sid, type: 'confirm_update', message: reply };
+    }
+
+    const reply = 'Action non supportee pour l\'instant.';
+    await this.saveInteraction(key, userId, sid, {}, history, reply);
+    return { sessionId: sid, type: 'error', message: reply };
+  }
+
+  private async executePendingWrite(
+    userId: string,
+    state: SessionState,
+    key: string,
+    history: ChatMessage[],
+    sid: string,
+  ) {
+    const pending = state.pendingWrite!;
+    let result: any;
+    if (pending.tool === 'add_vehicle') {
+      result = await this.tools.addVehicle({
+        ...(pending.args as {
+          contractNumber: string;
+          registrationNumber: string;
+          make: string;
+          model: string;
+          year: number;
+          chassisNumber?: string;
+          type?: string;
+        }),
+        userId,
+      });
+    } else {
+      throw new Error(`Outil d'ecriture inconnu : ${pending.tool}`);
+    }
+
+    if (result.error) {
+      const reply = `Erreur : ${result.error}`;
+      await this.saveInteraction(key, userId, sid, {}, history, reply);
+      this.sessions.delete(key);
+      return { sessionId: sid, type: 'error', message: reply };
+    }
+
+    // Trace d'audit de l'action realisee via l'agent
+    await this.prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'CREATE',
+        entity: pending.tool === 'add_vehicle' ? 'Vehicle' : pending.tool,
+        entityId: result.vehicle?.registrationNumber,
+        description: `[Agent IA] ${pending.summary}`,
+        metadata: { via: 'agent-chat', tool: pending.tool, args: pending.args },
+      },
+    });
+
+    let reply: string;
+    if (pending.tool === 'add_vehicle') {
+      reply = `Vehicule ${result.vehicle.registrationNumber} (${result.vehicle.make} ${result.vehicle.model}, ${result.vehicle.year}) ajoute au contrat ${result.contract.number} — ${result.contract.establishment}.`;
+    } else {
+      reply = 'Action effectuee avec succes.';
+    }
+
+    await this.saveInteraction(key, userId, sid, {}, history, reply);
+    this.sessions.delete(key);
+    return { sessionId: sid, type: 'success', message: reply };
   }
 
   private formatToolReply(toolName: string, result: any, suggestedResponse?: string): string {
@@ -831,6 +1003,42 @@ Regles pour response :
       dataReply = !result.count
         ? 'Aucun contrat ne correspond a votre recherche.'
         : `J'ai trouve ${result.count} contrat(s) :\n${result.contracts.map((c: any, i: number) => `${i + 1}. ${c.number} — ${c.establishment} — fin : ${c.endDate || 'Non renseignee'} — ${c.status}`).join('\n')}`;
+    } else if (toolName === 'get_contract') {
+      if (!result.found) {
+        dataReply = 'Aucun contrat actif trouve avec ce numero.';
+      } else {
+        const c = result.contract;
+        const lines = [
+          `Contrat ${c.number} — ${c.establishment}`,
+          `Type : ${c.type}${c.lot ? ` — Lot : ${c.lot}` : ''} — Statut : ${c.status}`,
+          `Du ${c.startDate || '?'} au ${c.endDate || '?'}`,
+          `Vehicule(s) : ${c.vehicles.length}`,
+          ...c.vehicles.map((v: any) => `  - ${v.registration} : ${v.label} [${v.type}]`),
+        ];
+        if (c.amendments.length > 0) {
+          lines.push(`Avenant(s) : ${c.amendments.length}`);
+          c.amendments.forEach((a: any) => lines.push(`  - ${a.date} : ${a.type}${a.description ? ` — ${a.description}` : ''}`));
+        }
+        dataReply = lines.join('\n');
+      }
+    } else if (toolName === 'get_vehicle') {
+      if (!result.found) {
+        dataReply = 'Aucun vehicule trouve avec cette immatriculation.';
+      } else {
+        const v = result.vehicle;
+        const lines = [
+          `Vehicule ${v.registration} : ${v.make} ${v.model} (${v.year}) — ${v.type}`,
+          v.chassis ? `Chassis : ${v.chassis}` : null,
+          v.usage ? `Usage : ${v.usage}` : null,
+          v.validityEnd ? `Validite : jusqu'au ${v.validityEnd}` : null,
+        ].filter(Boolean) as string[];
+        if (v.contract) {
+          lines.push(`Contrat ${v.contract.number} — ${v.contract.establishment} — ${v.contract.status} (fin : ${v.contract.endDate || '?'})`);
+        } else {
+          lines.push('Aucun contrat attache.');
+        }
+        dataReply = lines.join('\n');
+      }
     } else {
       dataReply = 'Voici le resultat de votre demande.';
     }

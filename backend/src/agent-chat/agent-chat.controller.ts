@@ -17,7 +17,7 @@ export class AgentChatController {
 
   @Post()
   chat(@CurrentUser() user: JwtUser, @Body() dto: AgentChatDto) {
-    return this.agentChat.chat(user.sub, dto.sessionId, dto.message);
+    return this.agentChat.chat(user.sub, user.role, dto.sessionId, dto.message);
   }
 
   @Get('sessions')
