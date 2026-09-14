@@ -37,6 +37,10 @@ interface SessionState {
   pendingChoice?: boolean;
   ambiguousDelete?: boolean;
   pendingWrite?: { tool: string; args: Record<string, any>; summary: string };
+  // Action en lot : "supprimer les users dont le nom contient test"
+  bulkQuery?: string;
+  bulk?: { mode: 'delete' | 'purge'; emails: string[] };
+  pendingBulk?: boolean;
 }
 
 export interface ChatMessage {
@@ -161,7 +165,25 @@ export class AgentChatService {
       }
 
       if (parsed.action !== 'talk' && parsed.action !== 'tool') {
-        state.action = parsed.action as SessionState['action'];
+        // Une purge deja choisie ("definitivement") ne doit pas etre reclassee en simple
+        // desactivation quand le message suivant contient encore "supprimer" ("...et les supprimer").
+        const downgradeToDelete =
+          state.action === 'purge' &&
+          parsed.action === 'delete' &&
+          !/\b(desactiv|archiver|inacti)/i.test(message);
+        if (!downgradeToDelete) {
+          state.action = parsed.action as SessionState['action'];
+        }
+      }
+
+      // Detection d'une action en lot : "supprimer les users de nom ou prenom test",
+      // "chercher les emails qui contiennent test et les supprimer".
+      if ((state.action === 'delete' || state.action === 'purge') && !state.bulkQuery) {
+        const bulkQuery = this.extractBulkQuery(message);
+        if (bulkQuery) {
+          state = { ...state, bulkQuery };
+          this.sessions.set(key, state);
+        }
       }
 
       // "changer le statut en desactive" = desactivation -> on bascule vers le flux suppression (avec confirmation).
@@ -178,7 +200,8 @@ export class AgentChatService {
       }
 
       // Resolution par nom : "desactiver un utilisateur mariem" -> on retrouve l'email via le nom.
-      if ((state.action === 'delete' || state.action === 'purge' || state.action === 'update') && !state.email) {
+      // Sauf si un critere de lot est deja detecte ("supprimer les users ... test").
+      if ((state.action === 'delete' || state.action === 'purge' || state.action === 'update') && !state.email && !state.bulkQuery) {
         const resolved = await this.resolveUserByName(message, state.firstName, state.lastName);
         if (resolved.email) {
           state = { ...state, email: resolved.email };
@@ -229,6 +252,25 @@ export class AgentChatService {
         } else {
           const reply = 'Merci de repondre "desactiver" (reversible) ou "definitivement" (irreversible), ou "annuler".';
           await this.saveInteraction(key, userId, sid, state, history, reply);
+          return { sessionId: sid, type: 'talk', message: reply };
+        }
+      }
+
+      // Action en lot : recherche des comptes correspondant au critere, puis confirmation unique.
+      if ((state.action === 'delete' || state.action === 'purge') && state.bulkQuery && !state.pendingBulk && !state.email) {
+        return this.prepareBulk(userId, state, key, history, sid);
+      }
+
+      // Confirmation d'une action en lot : "oui" execute, "non" annule.
+      if (state.pendingBulk && state.bulk) {
+        const lowerConfirm = message.toLowerCase().trim();
+        if (/\b(oui|confirmer|valider|ok|yes)\b/.test(lowerConfirm)) {
+          return this.handleBulk(userId, state, key, history, sid);
+        }
+        if (/\b(non|annuler|stop|no)\b/.test(lowerConfirm)) {
+          const reply = 'Action en lot annulee. Rien n\'a ete modifie.';
+          await this.saveInteraction(key, userId, sid, {}, history, reply);
+          this.sessions.delete(key);
           return { sessionId: sid, type: 'talk', message: reply };
         }
       }
@@ -506,7 +548,124 @@ export class AgentChatService {
       pendingChoice: current.pendingChoice,
       ambiguousDelete: current.ambiguousDelete,
       pendingWrite: current.pendingWrite,
+      bulkQuery: current.bulkQuery,
+      bulk: current.bulk,
+      pendingBulk: current.pendingBulk,
     };
+  }
+
+  // Extrait le critere de recherche d'une action en lot, ex. "test" dans
+  // "supprimer les users de nom ou prenom test" ou "chercher les emails qui contiennent test".
+  private extractBulkQuery(message: string): string | undefined {
+    const lower = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const plural = /\b(les|tous|toutes|plusieurs)\b/.test(lower) || /\b(contien\w*|commen\w*|fini\w*|dont)\b/.test(lower);
+    const aboutUsers = /\b(utilisateurs?|comptes?|employes?|users?|emails?|e-mails?|adresses?)\b/.test(lower);
+    if (!plural || !aboutUsers) return undefined;
+
+    let m = lower.match(/contien\w*\s+["']?([a-z0-9._%+-]+)/);
+    if (m) return m[1];
+
+    m = lower.match(/(?:nom|prenom)s?(?:\s+ou\s+(?:le\s+|la\s+)?(?:nom|prenom))?\s+["']?([a-z0-9à-ÿ._-]{2,})/);
+    if (m && !this.isBulkStopWord(m[1])) return m[1];
+
+    const tokens = lower
+      .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g, ' ')
+      .split(/[^a-zà-ÿ0-9]+/)
+      .filter((t) => t.length >= 2 && !this.isBulkStopWord(t));
+    return tokens.length ? tokens[tokens.length - 1] : undefined;
+  }
+
+  private isBulkStopWord(token: string): boolean {
+    const stop = new Set([
+      'je', 'tu', 'il', 'veux', 'voudrais', 'souhaite', 'dois', 'peux',
+      'le', 'la', 'les', 'un', 'une', 'de', 'du', 'des', 'en', 'a', 'au', 'aux', 'et', 'ou',
+      'qui', 'que', 'dont', 'avec', 'pour', 'dans', 'sur', 'par', 'moi',
+      'utilisateur', 'utilisateurs', 'employe', 'employes', 'compte', 'comptes', 'user', 'users',
+      'email', 'emails', 'nom', 'prenom', 'role', 'statut', 'status',
+      'admin', 'manager', 'viewer', 'tous', 'toutes', 'plusieurs',
+      'contient', 'contiennent', 'contenant', 'commence', 'commencent', 'finissent', 'terminent',
+      'desactiver', 'desactive', 'supprimer', 'delete', 'remove', 'purge', 'definitivement',
+      'completement', 'leurs', 'leur', 'ayant', 'ont', 'sont',
+    ]);
+    return stop.has(token);
+  }
+
+  // Recherche les comptes correspondant au critere du lot (hors ADMIN et hors compte courant),
+  // puis demande une confirmation unique avant toute ecriture.
+  private async prepareBulk(userId: string, state: SessionState, key: string, history: ChatMessage[], sid: string) {
+    const q = state.bulkQuery!;
+    const users = await this.prisma.user.findMany({
+      where: {
+        deletedAt: state.action === 'purge' ? undefined : null,
+        AND: [{ id: { not: userId } }, { role: { not: 'ADMIN' } }],
+        OR: [
+          { firstName: { contains: q, mode: 'insensitive' } },
+          { lastName: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      select: { email: true, firstName: true, lastName: true },
+      take: 20,
+    });
+
+    if (users.length === 0) {
+      const reply = `Aucun compte trouve correspondant a "${q}". Verifiez le critere de recherche.`;
+      const cleared = { ...state, bulkQuery: undefined };
+      this.sessions.set(key, cleared);
+      await this.saveInteraction(key, userId, sid, cleared, history, reply);
+      return { sessionId: sid, type: 'talk', message: reply };
+    }
+
+    const mode: 'delete' | 'purge' = state.action === 'purge' ? 'purge' : 'delete';
+    const next: SessionState = { ...state, bulk: { mode, emails: users.map((u) => u.email) }, pendingBulk: true };
+    this.sessions.set(key, next);
+    const actionLabel = mode === 'purge' ? 'supprimer DEFINITIVEMENT (action irreversible)' : 'desactiver';
+    const reply =
+      `${users.length} compte(s) correspondent a "${q}" :\n` +
+      users.map((u, i) => `${i + 1}. ${u.firstName} ${u.lastName} (${u.email})`).join('\n') +
+      `\nJe vais ${actionLabel} ces comptes. Confirmez-vous ? (oui / non)`;
+    await this.saveInteraction(key, userId, sid, next, history, reply);
+    return { sessionId: sid, type: 'confirm_delete', message: reply };
+  }
+
+  private async handleBulk(userId: string, state: SessionState, key: string, history: ChatMessage[], sid: string) {
+    const bulk = state.bulk!;
+    const done: string[] = [];
+
+    for (const email of bulk.emails) {
+      const user = await this.prisma.user.findFirst({
+        where: { email: email.toLowerCase() },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      if (!user) continue;
+      if (bulk.mode === 'purge') {
+        await this.prisma.user.delete({ where: { id: user.id } });
+      } else {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { deletedAt: new Date(), status: 'INACTIVE' },
+        });
+      }
+      done.push(`${user.firstName} ${user.lastName} (${email})`);
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: bulk.mode === 'purge' ? 'DELETE' : 'UPDATE',
+          entity: 'User',
+          entityId: user.id,
+          description: `[Agent IA] Compte ${bulk.mode === 'purge' ? 'supprime definitivement' : 'desactive'} : ${email}`,
+          metadata: { via: 'agent-chat', bulk: true, query: state.bulkQuery },
+        },
+      });
+    }
+
+    const reply =
+      bulk.mode === 'purge'
+        ? `${done.length} compte(s) supprime(s) definitivement :\n${done.join('\n')}`
+        : `${done.length} compte(s) desactive(s) :\n${done.join('\n')}`;
+    await this.saveInteraction(key, userId, sid, {}, history, reply);
+    this.sessions.delete(key);
+    return { sessionId: sid, type: 'success', message: reply };
   }
 
   private getMissingFields(state: SessionState): string[] {
