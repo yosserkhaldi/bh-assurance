@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, Building2, Car, ChartNoAxesCombined, ClipboardList, FileClock, FileText, Import, LogOut, Menu, RefreshCw, Search, Users, X } from 'lucide-react';
+import { Bell, Bot, Building2, Car, ChartNoAxesCombined, ClipboardList, FileClock, FileText, Import, LogOut, Menu, RefreshCw, Search, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useCan } from '@/hooks/use-can';
 import { Permission } from '@/lib/permissions';
 import type { Establishment, Contract, Vehicle } from '@/types';
+import { AgentChat } from '@/components/agent-chat';
 import { BrandLogo } from '@/components/brand-logo';
 
 const links = [
@@ -65,6 +66,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -252,6 +255,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <main className="mx-auto w-full max-w-[1500px] p-4 lg:p-8">{children}</main>
       </div>
+
+      {can(Permission.USERS_CREATE) && !chatOpen && (
+        <button
+          onClick={() => setChatOpen(true)}
+          className="fixed bottom-6 right-6 z-40 grid h-14 w-14 place-items-center rounded-full bg-navy text-white shadow-lg transition hover:scale-105 hover:shadow-xl"
+          title="Assistant BH"
+          aria-label="Ouvrir l'assistant BH"
+        >
+          <Bot size={24} />
+        </button>
+      )}
+      <AgentChat open={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }
