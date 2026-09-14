@@ -117,6 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const total = (results?.establishments.length ?? 0) + (results?.contracts.length ?? 0) + (results?.vehicles.length ?? 0);
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email;
 
   if (!ready || !user) return <div className="grid min-h-screen place-items-center text-slate-500">Chargement...</div>;
 
@@ -249,7 +250,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               )}
             </div>
-            <div className="hidden border-l border-slate-200 pl-4 text-right sm:block"><p className="text-sm font-semibold text-navy">{user.email}</p><p className="text-xs uppercase tracking-wide text-slate-500">{user.role}</p></div>
+            <div className="hidden border-l border-slate-200 pl-4 text-right sm:block"><p className="text-sm font-semibold text-navy">{displayName}</p><p className="text-xs uppercase tracking-wide text-slate-500">{user.role}</p></div>
             <button onClick={logout} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 transition hover:bg-red-50 hover:text-red-600" title="Se deconnecter"><LogOut size={19} /></button>
           </div>
         </header>
@@ -266,7 +267,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Bot size={24} />
         </button>
       )}
-      <AgentChat open={chatOpen} onClose={() => setChatOpen(false)} />
+      {can(Permission.USERS_CREATE) && <AgentChat open={chatOpen} onClose={() => setChatOpen(false)} />}
     </div>
   );
 }
