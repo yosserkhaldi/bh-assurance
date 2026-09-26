@@ -3,11 +3,13 @@
 import {
   ArrowLeft,
   Bot,
+  Building2,
   CalendarDays,
   CheckCircle,
+  CircleHelp,
   Clock3,
   Copy,
-  History,
+  FileText,
   MessageSquarePlus,
   Mic,
   Plus,
@@ -16,9 +18,6 @@ import {
   Settings,
   Sparkles,
   Trash2,
-  UserCog,
-  UserPlus,
-  UserX,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -52,11 +51,35 @@ type Conversation = {
   messages: ChatMessage[];
 };
 
+type ConversationCategory = 'Tous' | 'Employés' | 'Contrats' | 'Établissements' | 'Véhicules' | 'Autres';
+
+const CONVERSATION_CATEGORIES: ConversationCategory[] = ['Tous', 'Employés', 'Contrats', 'Établissements', 'Véhicules', 'Autres'];
+
+function getConversationCategory(conversation: Conversation): Exclude<ConversationCategory, 'Tous'> {
+  const text = `${conversation.title} ${conversation.messages.map((message) => message.content).join(' ')}`.toLocaleLowerCase('fr');
+  if (/employ|utilisateur|compte|manager|viewer/.test(text)) return 'Employés';
+  if (/contrat|garantie|résili|resili|avenant|remboursement/.test(text)) return 'Contrats';
+  if (/établissement|etablissement|agence|siret/.test(text)) return 'Établissements';
+  if (/véhicule|vehicule|auto|immatric|flotte/.test(text)) return 'Véhicules';
+  return 'Autres';
+}
+
+function getDateGroup(timestamp: number): string {
+  const date = new Date(timestamp);
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayDifference = Math.round((startOfToday - startOfDate) / 86_400_000);
+  if (dayDifference === 0) return "Aujourd’hui";
+  if (dayDifference === 1) return 'Hier';
+  return date.toLocaleDateString('fr-TN', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 const CHAT_SUGGESTIONS = [
-  { label: 'Créer un utilisateur', icon: UserPlus },
-  { label: 'Modifier un utilisateur', icon: UserCog },
-  { label: 'Désactiver un utilisateur', icon: UserX },
-  { label: 'Inspecter un utilisateur', icon: Search },
+  { label: 'Créer un établissement', icon: Building2 },
+  { label: 'Créer un contrat', icon: FileText },
+  { label: 'Rechercher', icon: Search },
+  { label: 'Aide', icon: CircleHelp },
 ];
 
 function getCurrentUserId(): string | null {
@@ -94,6 +117,8 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
   const [chatLoading, setChatLoading] = useState(false);
   const [chatCopied, setChatCopied] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyCategory, setHistoryCategory] = useState<ConversationCategory>('Tous');
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -294,26 +319,42 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
     setTimeout(() => setChatCopied(false), 2000);
   };
 
+  const filteredConversations = conversations
+    .filter((conversation) => {
+      const matchesCategory = historyCategory === 'Tous' || getConversationCategory(conversation) === historyCategory;
+      const query = historySearch.trim().toLocaleLowerCase('fr');
+      const matchesSearch = !query || conversation.title.toLocaleLowerCase('fr').includes(query);
+      return matchesCategory && matchesSearch;
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+
   if (!open) return null;
 
   return (
-    <section className="fixed inset-0 z-50 flex min-h-0 flex-col bg-[#fcfcfb]" role="dialog" aria-modal="true" aria-label="Assistant BH">
-      <aside className="hidden">
+    <section className="fixed inset-0 z-50 flex min-h-0 bg-[#fcfcfb]" role="dialog" aria-modal="true" aria-label="Assistant BH">
+      <aside className={`absolute inset-y-0 left-0 z-40 flex w-[340px] flex-col border-r border-slate-200 bg-[#f8fbff] shadow-xl transition-transform lg:relative lg:z-auto lg:w-[390px] lg:shrink-0 lg:translate-x-0 lg:shadow-none ${historyOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex h-20 items-center justify-between border-b border-slate-200 px-5">
           <div className="flex items-center gap-2.5 text-navy"><Bot size={20} /><h2 className="font-bold">Assistant BH</h2></div>
           <button onClick={startNewConversation} className="icon-btn" title="Nouvelle conversation" aria-label="Nouvelle conversation"><MessageSquarePlus size={18} /></button>
         </div>
         <div className="p-4">
-          <button onClick={startNewConversation} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 text-sm font-semibold text-brandRed transition hover:border-red-200 hover:bg-red-50"><Plus size={17} /> Nouvelle conversation</button>
+          <button onClick={startNewConversation} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-navy text-sm font-semibold text-white shadow-sm transition hover:bg-blue-900"><Plus size={17} /> Nouvelle discussion</button>
+          <label className="mt-3 flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-slate-500 focus-within:border-blue-400">
+            <Search size={17} />
+            <input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" placeholder="Rechercher dans l’historique" />
+          </label>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {CONVERSATION_CATEGORIES.map((category) => <button key={category} type="button" onClick={() => setHistoryCategory(category)} className={`whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-semibold ${historyCategory === category ? 'border-blue-200 bg-blue-100 text-navy' : 'border-slate-200 bg-white text-slate-600'}`}>{category}</button>)}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto px-3 pb-5">
           <p className="px-2 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">Conversations</p>
-          {conversations.length === 0 ? <p className="px-2 py-6 text-sm text-slate-400">Aucune conversation enregistrée</p> : (
+          {filteredConversations.length === 0 ? <p className="px-2 py-6 text-sm text-slate-400">Aucune conversation trouvée</p> : (
             <ul className="space-y-1">
-              {conversations.slice().sort((a, b) => b.updatedAt - a.updatedAt).map((conv) => (
+              {filteredConversations.map((conv) => (
                 <li key={conv.id}>
                   <button onClick={() => selectConversation(conv.id)} className={`group flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left transition ${conv.id === currentSessionId ? 'bg-blue-50 text-navy' : 'text-slate-600 hover:bg-slate-50'}`}>
-                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{conv.title || 'Nouvelle conversation'}</p><p className="mt-1 text-[11px] text-slate-400">{new Date(conv.updatedAt).toLocaleString('fr-TN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p></div>
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{conv.title || 'Nouvelle conversation'}</p><p className="mt-1 text-[11px] text-slate-400">{getConversationCategory(conv)} · {getDateGroup(conv.updatedAt)} · {new Date(conv.updatedAt).toLocaleTimeString('fr-TN', { hour: '2-digit', minute: '2-digit' })}</p></div>
                     <span onClick={(e) => deleteConversation(e, conv.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-400 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100" role="button" aria-label="Supprimer la conversation"><Trash2 size={13} /></span>
                   </button>
                 </li>
@@ -323,11 +364,12 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
         </div>
         <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-4 text-xs text-slate-500"><CalendarDays size={15} />{new Date().toLocaleDateString('fr-TN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
       </aside>
+      {historyOpen && <button className="absolute inset-0 z-30 bg-slate-950/20 lg:hidden" onClick={() => setHistoryOpen(false)} aria-label="Fermer l’historique" />}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#fcfcfb]">
         <header className="relative grid h-[84px] shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-slate-200/80 bg-white px-4 sm:px-8">
           <div className="flex min-w-0 items-center gap-4 sm:gap-8">
-            <BrandLogo className="hidden w-[68px] sm:block" />
+            <BrandLogo className="hidden" />
             <button onClick={onClose} className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-navy transition hover:border-blue-200 hover:bg-blue-50/60" aria-label="Fermer l'assistant"><ArrowLeft size={18} /><span className="hidden sm:inline">Retour</span></button>
           </div>
           <div className="flex items-center gap-2 text-navy">
@@ -336,21 +378,10 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
             <h2 className="text-base font-bold sm:hidden">Assistant BH</h2>
           </div>
           <div className="relative flex items-center justify-end gap-2">
-            <button onClick={() => setHistoryOpen((open) => !open)} className={`flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition ${historyOpen ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-navy hover:border-blue-200 hover:bg-slate-50'}`} aria-expanded={historyOpen} aria-haspopup="menu"><Clock3 size={17} /><span className="hidden md:inline">Historique</span></button>
+            <button onClick={() => setHistoryOpen((open) => !open)} className={`flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition lg:hidden ${historyOpen ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-navy hover:border-blue-200 hover:bg-slate-50'}`} aria-expanded={historyOpen}><Clock3 size={17} /><span className="hidden md:inline">Historique</span></button>
+            <div className="hidden h-11 items-center gap-2 px-2 text-sm font-semibold text-navy lg:flex"><Clock3 size={17} />Historique</div>
             {speechSupported && <button type="button" onClick={() => { if (voiceMode) cancel(); setVoiceMode((v) => !v); }} className={`grid h-11 w-11 place-items-center rounded-xl border transition ${voiceMode ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-slate-200 bg-white text-navy hover:bg-slate-50'}`} title={voiceMode ? 'Arrêter le mode vocal' : 'Démarrer le mode vocal'} aria-label={voiceMode ? 'Arrêter le mode vocal' : 'Démarrer le mode vocal'}>{voiceMode ? <Volume2 size={18} /> : <VolumeX size={18} />}</button>}
             <button type="button" className="hidden h-11 w-11 place-items-center rounded-xl border border-slate-200 bg-white text-navy hover:bg-slate-50 sm:grid" aria-label="Paramètres de l’assistant"><Settings size={18} /></button>
-            {historyOpen && (
-              <div className="absolute right-0 top-[56px] z-20 w-[min(340px,calc(100vw-32px))] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(6,38,80,0.14)]" role="menu" aria-label="Conversations récentes">
-                <div className="mb-2 flex items-center justify-between px-2 py-1"><p className="text-xs font-semibold text-slate-500">Conversations récentes</p><button onClick={startNewConversation} className="grid h-8 w-8 place-items-center rounded-lg text-brandRed hover:bg-red-50" aria-label="Nouvelle conversation"><Plus size={17} /></button></div>
-                {conversations.length === 0 ? <p className="px-2 py-5 text-sm text-slate-400">Aucune conversation enregistrée</p> : (
-                  <ul className="max-h-[360px] space-y-1 overflow-y-auto">
-                    {conversations.slice().sort((a, b) => b.updatedAt - a.updatedAt).map((conv) => (
-                      <li key={conv.id}><button onClick={() => selectConversation(conv.id)} className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${conv.id === currentSessionId ? 'bg-blue-50 text-navy' : 'text-slate-600 hover:bg-slate-50'}`} role="menuitem"><History size={15} className="shrink-0 text-blue-600" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{conv.title || 'Nouvelle conversation'}</span><span className="mt-1 block text-[11px] text-slate-400">{new Date(conv.updatedAt).toLocaleString('fr-TN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></span><span onClick={(e) => deleteConversation(e, conv.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-400 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100" role="button" aria-label="Supprimer la conversation"><Trash2 size={13} /></span></button></li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
           </div>
         </header>
         <div className="flex-1 overflow-y-auto">
@@ -375,28 +406,21 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
               <div ref={chatEndRef} />
             </div>
             <div className="sticky bottom-0 mt-10 bg-[#fcfcfb] pb-4 pt-5">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-base font-bold text-navy">Bonjour ! Comment puis-je vous aider aujourd’hui ?</p>
-                  <p className="mt-1 text-sm text-slate-500">Choisissez une action ou décrivez votre demande.</p>
-                </div>
-                <Sparkles size={19} className="shrink-0 text-blue-600" aria-hidden="true" />
-              </div>
-              <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
                 {CHAT_SUGGESTIONS.map(({ label, icon: Icon }) => (
                   <button
                     key={label}
                     type="button"
                     onClick={() => setChatInput(label)}
                     aria-pressed={chatInput === label}
-                    className={`flex min-h-[68px] items-center gap-3 rounded-xl px-4 py-3 text-left transition focus-visible:outline-none ${
+                    className={`flex min-h-[48px] items-center justify-center gap-3 rounded-xl border px-3 py-2 text-center transition focus-visible:outline-none ${
                       chatInput === label
-                        ? 'bg-blue-50 text-blue-800'
-                        : 'bg-slate-50/80 text-navy hover:bg-blue-50/70'
+                        ? 'border-blue-300 bg-blue-50 text-blue-800'
+                        : 'border-slate-200 bg-white text-navy hover:border-blue-200 hover:bg-blue-50/60'
                     }`}
                   >
-                    <Icon size={21} className={`shrink-0 ${label.startsWith('D') ? 'text-red-500' : 'text-blue-600'}`} aria-hidden="true" />
-                    <span className="text-sm font-semibold">{label}</span>
+                    <Icon size={20} className="shrink-0 text-blue-700" aria-hidden="true" />
+                    <span className="text-xs font-semibold sm:text-sm">{label}</span>
                   </button>
                 ))}
               </div>
