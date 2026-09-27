@@ -1,4 +1,6 @@
 export enum Permission {
+  AGENT_ACCESS = 'AGENT_ACCESS',
+
   USERS_READ = 'USERS_READ',
   USERS_CREATE = 'USERS_CREATE',
   USERS_UPDATE = 'USERS_UPDATE',
@@ -52,12 +54,14 @@ export function getRolePermissions(role?: Role | string | null): Permission[] {
           p !== Permission.REPORTS_EXPORT,
       );
     case 'VIEWER':
-      return all.filter(
-        (p) =>
-          p.endsWith('_READ') ||
-          p === Permission.NOTIFICATIONS_READ ||
-          p === Permission.DOCUMENTS_READ,
-      );
+      return [
+        Permission.AGENT_ACCESS,
+        Permission.ESTABLISHMENTS_READ,
+        Permission.CONTRACTS_READ,
+        Permission.VEHICLES_READ,
+        Permission.NOTIFICATIONS_READ,
+        Permission.DOCUMENTS_READ,
+      ];
     default:
       return [];
   }

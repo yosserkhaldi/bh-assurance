@@ -5,12 +5,13 @@ import { CurrentUser, JwtUser } from '../common/current-user.decorator';
 import { PaginationDto } from '../common/pagination.dto';
 import { Permission } from '../common/permissions';
 import { Permissions } from '../common/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions.guard';
 import { CreateEstablishmentDto, UpdateEstablishmentDto } from './establishments.dto';
 import { EstablishmentsService } from './establishments.service';
 
 @ApiTags('Etablissements')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('establishments')
 export class EstablishmentsController {
   constructor(private readonly service: EstablishmentsService) {}

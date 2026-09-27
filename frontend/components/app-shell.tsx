@@ -257,7 +257,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-[1500px] p-4 lg:p-8">{children}</main>
       </div>
 
-      {can(Permission.USERS_CREATE) && !chatOpen && (
+      {can(Permission.AGENT_ACCESS) && !chatOpen && (
         <button
           onClick={() => setChatOpen(true)}
           className="fixed bottom-6 right-6 z-40 grid h-14 w-14 place-items-center rounded-full bg-navy text-white shadow-lg transition hover:scale-105 hover:shadow-xl"
@@ -267,7 +267,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Bot size={24} />
         </button>
       )}
-      {can(Permission.USERS_CREATE) && <AgentChat open={chatOpen} onClose={() => setChatOpen(false)} />}
+      {can(Permission.AGENT_ACCESS) && <AgentChat open={chatOpen} onClose={() => setChatOpen(false)} />}
     </div>
   );
 }

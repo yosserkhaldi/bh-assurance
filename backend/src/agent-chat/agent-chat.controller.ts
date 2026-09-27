@@ -11,7 +11,7 @@ import { AgentChatDto } from './agent-chat.dto';
 @ApiTags('Agent Chat')
 @Controller('agent/chat')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@Permissions(Permission.USERS_CREATE)
+@Permissions(Permission.AGENT_ACCESS)
 export class AgentChatController {
   constructor(private readonly agentChat: AgentChatService) {}
 

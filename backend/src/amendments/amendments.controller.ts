@@ -4,12 +4,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/current-user.decorator';
 import { Permission } from '../common/permissions';
 import { Permissions } from '../common/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions.guard';
 import { AmendmentQueryDto, CreateAmendmentDto, UpdateAmendmentStatusDto } from './amendments.dto';
 import { AmendmentsService } from './amendments.service';
 
 @ApiTags('Avenants')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('amendments')
 export class AmendmentsController {
   constructor(private readonly service: AmendmentsService) {}

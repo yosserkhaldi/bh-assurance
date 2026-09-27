@@ -6,6 +6,7 @@ import { PaginationDto } from '../common/pagination.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permission } from '../common/permissions';
 import { Permissions } from '../common/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions.guard';
 import { UsersService } from './users.service';
 
 class CreateUserDto {
@@ -24,12 +25,13 @@ class UpdateUserDto {
 
 @ApiTags('Utilisateurs')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly service: UsersService) {}
   @Get() @Permissions(Permission.USERS_READ) findAll(@Query() query: PaginationDto) { return this.service.findAll(query); }
   @Post() @Permissions(Permission.USERS_CREATE) create(@Body() dto: CreateUserDto) { return this.service.create(dto); }
   @Patch(':id') @Permissions(Permission.USERS_UPDATE) update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto) { return this.service.update(id, dto); }
+  @Delete(':id/permanent') @Permissions(Permission.USERS_DELETE) purge(@Param('id', ParseUUIDPipe) id: string) { return this.service.purge(id); }
   @Delete(':id') @Permissions(Permission.USERS_DELETE) remove(@Param('id', ParseUUIDPipe) id: string) { return this.service.remove(id); }
 }

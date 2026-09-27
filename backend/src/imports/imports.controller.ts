@@ -7,11 +7,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/current-user.decorator';
 import { Permission } from '../common/permissions';
 import { Permissions } from '../common/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions.guard';
 import { ImportsService } from './imports.service';
 
 @ApiTags('Imports / Export SI')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('imports')
 export class ImportsController {
   constructor(private readonly service: ImportsService) {}

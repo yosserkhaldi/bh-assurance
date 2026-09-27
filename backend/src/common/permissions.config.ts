@@ -8,10 +8,12 @@ export const ROLE_PERMISSIONS: Record<'ADMIN' | 'MANAGER' | 'VIEWER', Permission
       p !== Permission.AUDIT_READ &&
       p !== Permission.REPORTS_EXPORT,
   ),
-  VIEWER: Object.values(Permission).filter(
-    (p) =>
-      p.endsWith('_READ') ||
-      p === Permission.NOTIFICATIONS_READ ||
-      p === Permission.DOCUMENTS_READ,
-  ),
+  VIEWER: [
+    Permission.AGENT_ACCESS,
+    Permission.ESTABLISHMENTS_READ,
+    Permission.CONTRACTS_READ,
+    Permission.VEHICLES_READ,
+    Permission.NOTIFICATIONS_READ,
+    Permission.DOCUMENTS_READ,
+  ],
 };

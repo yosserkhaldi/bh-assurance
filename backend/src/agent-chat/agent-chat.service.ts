@@ -1,5 +1,7 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Permission } from '../common/permissions';
+import { ROLE_PERMISSIONS } from '../common/permissions.config';
 import { PrismaService } from '../prisma/prisma.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
 import { AgentToolsService } from './agent-tools.service';
@@ -26,6 +28,8 @@ interface ParsedIntent {
   toolArgs?: Record<string, any>;
 }
 
+type ManagedEntity = 'user' | 'establishment' | 'contract' | 'vehicle';
+
 interface SessionState {
   email?: string;
   firstName?: string;
@@ -37,6 +41,7 @@ interface SessionState {
   pendingChoice?: boolean;
   ambiguousDelete?: boolean;
   pendingWrite?: { tool: string; args: Record<string, any>; summary: string };
+  lastSearch?: { tool: string; args: Record<string, any> };
   // Action en lot : "supprimer les users dont le nom contient test"
   bulkQuery?: string;
   bulk?: { mode: 'delete' | 'purge'; emails: string[] };
@@ -110,11 +115,18 @@ export class AgentChatService {
     history.push({ role: 'user', content: message });
 
     try {
+      const entityRequest = this.detectEntityRequest(message);
+      if (entityRequest?.entity === 'user' && role !== 'ADMIN') {
+        const reply = 'La gestion des utilisateurs est reservee aux administrateurs. Je peux vous aider avec les etablissements, contrats et vehicules selon vos permissions.';
+        this.sessions.delete(key);
+        await this.saveInteraction(key, userId, sid, state, history, reply);
+        return { sessionId: sid, type: 'error', message: reply };
+      }
       // Confirmation d'une ecriture en attente (add_vehicle...) : "oui" execute, "non" annule.
       if (state.pendingWrite) {
         const lower = message.toLowerCase().trim();
         if (/\b(oui|confirmer|valider|ok|yes)\b/.test(lower)) {
-          return this.executePendingWrite(userId, state, key, history, sid);
+          return this.executePendingWrite(userId, role, state, key, history, sid);
         }
         if (/\b(non|annuler|stop|no)\b/.test(lower)) {
           const reply = 'Action annulee. Rien n\'a ete modifie.';
@@ -126,13 +138,42 @@ export class AgentChatService {
       }
 
       // Detection locale rapide des recherches avant meme d'appeler Gemini
-      const quickTool = this.detectTool(message);
+      const normalizedMessage = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const correction = state.lastSearch?.tool === 'search_vehicles' && /\b(marque|modele)\b/.test(normalizedMessage)
+        ? {
+            action: 'tool' as const,
+            tool: 'search_vehicles',
+            toolArgs: {
+              makeOrModel: state.lastSearch.args.makeOrModel || state.lastSearch.args.query,
+            },
+          }
+        : undefined;
+      const quickTool = correction || this.detectTool(message);
       if (quickTool?.action === 'tool' && quickTool.tool) {
         if (quickTool.tool === 'add_vehicle') {
           return this.prepareWrite(userId, role, quickTool.tool, quickTool.toolArgs || {}, key, history, sid);
         }
-        const toolResult = await this.executeTool(quickTool.tool, quickTool.toolArgs || {});
+        const toolResult = await this.executeTool(role, quickTool.tool, quickTool.toolArgs || {});
         const reply = this.formatToolReply(quickTool.tool, toolResult);
+        state = { ...state, lastSearch: { tool: quickTool.tool, args: quickTool.toolArgs || {} } };
+        this.sessions.set(key, state);
+        await this.saveInteraction(key, userId, sid, state, history, reply);
+        return { sessionId: sid, type: 'talk', message: reply };
+      }
+
+      if (entityRequest && entityRequest.entity !== 'user') {
+        const required = this.entityPermission(entityRequest.entity, entityRequest.action);
+        if (!(ROLE_PERMISSIONS[role] ?? []).includes(required)) {
+          const reply = role === 'VIEWER'
+            ? 'Votre compte VIEWER est en lecture seule. Je peux rechercher et consulter cette entite, mais pas la modifier.'
+            : 'Vous ne disposez pas de la permission necessaire pour cette action.';
+          this.sessions.delete(key);
+          await this.saveInteraction(key, userId, sid, {}, history, reply);
+          return { sessionId: sid, type: 'error', message: reply };
+        }
+        state = {};
+        this.sessions.delete(key);
+        const reply = this.describeEntityCrud(entityRequest.entity, entityRequest.action);
         await this.saveInteraction(key, userId, sid, state, history, reply);
         return { sessionId: sid, type: 'talk', message: reply };
       }
@@ -158,7 +199,7 @@ export class AgentChatService {
         if (parsed.tool === 'add_vehicle') {
           return this.prepareWrite(userId, role, parsed.tool, parsed.toolArgs || {}, key, history, sid);
         }
-        const toolResult = await this.executeTool(parsed.tool, parsed.toolArgs || {});
+        const toolResult = await this.executeTool(role, parsed.tool, parsed.toolArgs || {});
         const reply = this.formatToolReply(parsed.tool, toolResult, parsed.response);
         await this.saveInteraction(key, userId, sid, state, history, reply);
         return { sessionId: sid, type: 'talk', message: reply };
@@ -194,7 +235,9 @@ export class AgentChatService {
 
       // Si c'est une conversation generale sans action en cours, on repond directement sans demander des champs.
       if (parsed.action === 'talk' && !state.action) {
-        const reply = parsed.response || 'Je suis votre assistant BH Assurance. Je peux vous aider sur les comptes employes, les etablissements et les contrats. Que souhaitez-vous faire ?';
+        const reply = parsed.response || (role === 'VIEWER'
+          ? 'Je peux rechercher et consulter les etablissements, contrats et vehicules. Precisez un nom, RNE, gouvernorat, numero de contrat, marque, modele ou immatriculation.'
+          : 'Je peux vous aider sur les etablissements, contrats et vehicules selon vos permissions. Que souhaitez-vous faire ?');
         await this.saveInteraction(key, userId, sid, state, history, reply);
         return { sessionId: sid, type: 'talk', message: reply };
       }
@@ -362,6 +405,35 @@ export class AgentChatService {
       this.histories.set(key, history);
       return { sessionId: sid, type: 'error', message: reply };
     }
+  }
+
+  private detectEntityRequest(message: string): { entity: ManagedEntity; action: 'create' | 'update' | 'delete' } | undefined {
+    const text = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const action = /\b(creer|cree|ajouter|nouveau)\b/.test(text) ? 'create'
+      : /\b(modifier|changer|mettre a jour)\b/.test(text) ? 'update'
+        : /\b(supprimer|archiver|desactiver)\b/.test(text) ? 'delete' : undefined;
+    if (!action) return undefined;
+    const entity: ManagedEntity | undefined = /\b(etablissement|societe|client)\b/.test(text) ? 'establishment'
+      : /\b(contrat)\b/.test(text) ? 'contract'
+        : /\b(vehicule|voiture|camion|moto)\b/.test(text) ? 'vehicle'
+          : /\b(employe|utilisateur|compte)\b/.test(text) ? 'user' : undefined;
+    return entity ? { entity, action } : undefined;
+  }
+
+  private describeEntityCrud(entity: Exclude<ManagedEntity, 'user'>, action: 'create' | 'update' | 'delete'): string {
+    if (entity === 'establishment') {
+      if (action === 'create') return "Pour creer l'etablissement, donnez-moi : la raison sociale, le RNE (7 chiffres + 1 lettre), l'adresse, le gouvernorat, le nom du responsable, le telephone (8 chiffres) et l'email. Le matricule fiscal est facultatif.";
+      if (action === 'update') return "Pour modifier l'etablissement, donnez-moi son RNE puis les champs a changer : raison sociale, adresse, gouvernorat, responsable, telephone, email ou matricule fiscal.";
+      return "Pour archiver l'etablissement, donnez-moi son RNE. Je demanderai une confirmation avant d'archiver aussi ses contrats et vehicules lies.";
+    }
+    if (entity === 'contract') {
+      if (action === 'create') return "Pour creer le contrat, donnez-moi : le numero, le type (FLEET, INDIVIDUAL, TEMPORARY ou OTHER), la date de debut, la date de fin et le RNE de l'etablissement.";
+      if (action === 'update') return "Pour modifier le contrat, donnez-moi son numero puis les champs a changer : type, dates, statut ou etablissement.";
+      return "Pour archiver le contrat, donnez-moi son numero. Je demanderai une confirmation avant d'archiver ses vehicules lies.";
+    }
+    if (action === 'create') return "Pour creer le vehicule, donnez-moi : le numero du contrat, l'immatriculation, la marque, le modele, l'annee, le numero de chassis et le type (CAR, VAN, TRUCK, BUS, MOTORCYCLE, SPECIAL ou OTHER).";
+    if (action === 'update') return "Pour modifier le vehicule, donnez-moi son immatriculation puis les champs a changer : marque, modele, annee, type ou contrat.";
+    return "Pour archiver le vehicule, donnez-moi son immatriculation. Je demanderai une confirmation avant l'operation.";
   }
 
   // "supprimer" tout court est ambigu (desactiver ou purge ?). "desactiver"/"definitivement" ne le sont pas.
@@ -740,7 +812,7 @@ Determine l'intention EXACTE parmi : onboard, update, delete, purge, talk, tool.
 Extrais les champs s'ils sont presents dans le message.
 
 Reponds UNIQUEMENT en JSON strict (sans markdown, sans texte autour). Pour une action tool, le format est :
-{"action":"tool","tool":"list_users|search_establishments|search_contracts|get_contract|get_vehicle|add_vehicle","toolArgs":{...},"response":"..."}
+{"action":"tool","tool":"list_users|search_establishments|search_contracts|search_vehicles|get_contract|get_vehicle|add_vehicle","toolArgs":{...},"response":"..."}
 
 Pour les autres actions :
 {"action":"onboard|update|delete|purge|talk","email":"...","firstName":"...","lastName":"...","role":"MANAGER|VIEWER","status":"ACTIVE|INACTIVE|LOCKED","response":"..."}
@@ -902,7 +974,7 @@ Regles pour response :
   }
 
   private detectTool(message: string): Partial<ParsedIntent> | undefined {
-    const lower = message.toLowerCase();
+    const lower = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     // "ajoute le vehicule 145 TU 8890, Peugeot Partner 2022 au contrat 216"
     const addVehicleMatch = message.match(/(?:ajoute|ajouter|creer|crée)\s+(?:le\s+|un\s+)?v[ée]hicule\s+([^,]+?)(?:,|\s+au\s+contrat|\s+dans\s+(?:le\s+)?contrat|$)/i);
@@ -930,7 +1002,7 @@ Regles pour response :
 
     // "vehicule 145 TU 8890" (hors contexte "ajouter")
     const vehicleDetailMatch = message.match(/v[ée]hicule\s+([A-Z0-9][A-Z0-9 ]{2,20})/i);
-    if (vehicleDetailMatch && !/\b(ajoute|ajouter|liste|recherche|cherche|trouve|donne|affiche|combien)\b/.test(lower)) {
+    if (vehicleDetailMatch && !/\b(ajoute|ajouter|liste|rechercher?|cherche|trouve|donne[rz]?|affiche|combien|marque|modele)\b/.test(lower)) {
       return { action: 'tool', tool: 'get_vehicle', toolArgs: { registration: vehicleDetailMatch[1].trim() } };
     }
 
@@ -955,15 +1027,23 @@ Regles pour response :
       return { action: 'tool', tool: 'search_establishments', toolArgs: { query } };
     }
 
-    if (/\b(contrat|contrats)\b/.test(lower)) {
+    if (/\b(vehicule|vehicules|voiture|voitures)\b/.test(lower)) {
+      const makeMatch = message.match(/(?:marque|mod[èe]le)\s+(.+?)(?:\s+(?:au|du)\s+contrat|$)/i);
+      const query = makeMatch?.[1]?.trim() || this.extractSearchQuery(message, 'vehicule|vehicules|voiture|voitures|marque|modele');
+      return { action: 'tool', tool: 'search_vehicles', toolArgs: { makeOrModel: makeMatch?.[1]?.trim(), query: makeMatch ? undefined : query } };
+    }
+
+    if (/\b(contrat|contrats|contract|contracts)\b/.test(lower)) {
       const estMatch = message.match(/(?:etablissement|societe|client)\s+([A-Za-zÀ-ÿ0-9\- ]{2,})/i);
-      const query = this.extractSearchQuery(message, 'contrat|contrats');
+      const governorateMatch = message.match(/(?:ville|gouvernorat|[àa])\s+(tunis|ariana|ben arous|manouba|nabeul|bizerte|zaghouan|sousse|monastir|mahdia|sfax|beja|jendouba|kef|siliana|kairouan|kasserine|sidi bouzid|gabes|medenine|tataouine|gafsa|tozeur|kebili)/i);
+      const query = governorateMatch ? undefined : this.extractSearchQuery(message, 'contrat|contrats|contract|contracts');
       return {
         action: 'tool',
         tool: 'search_contracts',
         toolArgs: {
           query,
           establishmentName: estMatch ? estMatch[1].trim() : undefined,
+          governorate: governorateMatch ? governorateMatch[1].replace(/ /g, '_').toUpperCase() : undefined,
         },
       };
     }
@@ -1020,7 +1100,8 @@ Regles pour response :
     this.histories.delete(`${userId}:${sessionId}`);
   }
 
-  private async executeTool(toolName: string, args: Record<string, any>): Promise<any> {
+  private async executeTool(role: 'ADMIN' | 'MANAGER' | 'VIEWER', toolName: string, args: Record<string, any>): Promise<any> {
+    this.assertToolPermission(role, toolName);
     switch (toolName) {
       case 'list_users':
         return this.tools.listUsers(args);
@@ -1028,6 +1109,8 @@ Regles pour response :
         return this.tools.searchEstablishments(args);
       case 'search_contracts':
         return this.tools.searchContracts(args);
+      case 'search_vehicles':
+        return this.tools.searchVehicles(args);
       case 'get_contract':
         return this.tools.getContract(args as { number: string });
       case 'get_vehicle':
@@ -1047,8 +1130,10 @@ Regles pour response :
     history: ChatMessage[],
     sid: string,
   ) {
-    if (role === 'VIEWER') {
-      const reply = 'Les modifications via l\'agent sont reservees aux ADMIN et MANAGER. Votre compte VIEWER est en lecture seule.';
+    try {
+      this.assertToolPermission(role, tool);
+    } catch (error) {
+      const reply = error instanceof Error ? error.message : 'Vous ne disposez pas de la permission necessaire.';
       await this.saveInteraction(key, userId, sid, {}, history, reply);
       this.sessions.delete(key);
       return { sessionId: sid, type: 'error', message: reply };
@@ -1092,12 +1177,14 @@ Regles pour response :
 
   private async executePendingWrite(
     userId: string,
+    role: 'ADMIN' | 'MANAGER' | 'VIEWER',
     state: SessionState,
     key: string,
     history: ChatMessage[],
     sid: string,
   ) {
     const pending = state.pendingWrite!;
+    this.assertToolPermission(role, pending.tool);
     let result: any;
     if (pending.tool === 'add_vehicle') {
       result = await this.tools.addVehicle({
@@ -1147,6 +1234,47 @@ Regles pour response :
     return { sessionId: sid, type: 'success', message: reply };
   }
 
+  private assertToolPermission(role: 'ADMIN' | 'MANAGER' | 'VIEWER', toolName: string) {
+    const requiredByTool: Record<string, Permission> = {
+      list_users: Permission.USERS_READ,
+      search_establishments: Permission.ESTABLISHMENTS_READ,
+      search_contracts: Permission.CONTRACTS_READ,
+      get_contract: Permission.CONTRACTS_READ,
+      get_vehicle: Permission.VEHICLES_READ,
+      search_vehicles: Permission.VEHICLES_READ,
+      add_vehicle: Permission.VEHICLES_CREATE,
+    };
+    const required = requiredByTool[toolName];
+    if (!required || !(ROLE_PERMISSIONS[role] ?? []).includes(required)) {
+      throw new ForbiddenException(
+        role === 'VIEWER'
+          ? 'Votre compte VIEWER est en lecture seule. Cette modification n\'est pas autorisee.'
+          : 'Vous ne disposez pas de la permission necessaire pour cette action.',
+      );
+    }
+  }
+
+  private entityPermission(entity: Exclude<ManagedEntity, 'user'>, action: 'create' | 'update' | 'delete'): Permission {
+    const permissions = {
+      establishment: {
+        create: Permission.ESTABLISHMENTS_CREATE,
+        update: Permission.ESTABLISHMENTS_UPDATE,
+        delete: Permission.ESTABLISHMENTS_DELETE,
+      },
+      contract: {
+        create: Permission.CONTRACTS_CREATE,
+        update: Permission.CONTRACTS_UPDATE,
+        delete: Permission.CONTRACTS_DELETE,
+      },
+      vehicle: {
+        create: Permission.VEHICLES_CREATE,
+        update: Permission.VEHICLES_UPDATE,
+        delete: Permission.VEHICLES_DELETE,
+      },
+    } as const;
+    return permissions[entity][action];
+  }
+
   private formatToolReply(toolName: string, result: any, suggestedResponse?: string): string {
     let dataReply: string;
 
@@ -1161,7 +1289,11 @@ Regles pour response :
     } else if (toolName === 'search_contracts') {
       dataReply = !result.count
         ? 'Aucun contrat ne correspond a votre recherche.'
-        : `J'ai trouve ${result.count} contrat(s) :\n${result.contracts.map((c: any, i: number) => `${i + 1}. ${c.number} — ${c.establishment} — fin : ${c.endDate || 'Non renseignee'} — ${c.status}`).join('\n')}`;
+        : `J'ai trouve ${result.count} contrat(s) :\n${result.contracts.map((c: any, i: number) => `${i + 1}. ${c.number} — ${c.establishment}${c.governorate ? ` (${c.governorate})` : ''} — fin : ${c.endDate || 'Non renseignee'} — ${c.status}`).join('\n')}`;
+    } else if (toolName === 'search_vehicles') {
+      dataReply = !result.count
+        ? 'Aucun vehicule ne correspond a votre recherche.'
+        : `J'ai trouve ${result.count} vehicule(s) :\n${result.vehicles.map((v: any, i: number) => `${i + 1}. ${v.registrationNumber} — ${v.make} ${v.model} (${v.year}) — contrat ${v.contract.number} — ${v.contract.establishment.businessName}`).join('\n')}`;
     } else if (toolName === 'get_contract') {
       if (!result.found) {
         dataReply = 'Aucun contrat actif trouve avec ce numero.';

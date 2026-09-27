@@ -59,6 +59,12 @@ export class UsersService {
     return this.prisma.user.update({ where: { id }, data: { deletedAt: new Date(), status: 'INACTIVE' } });
   }
 
+  async purge(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    return this.prisma.user.delete({ where: { id } });
+  }
+
   private async exists(id: string) {
     if (!(await this.prisma.user.findFirst({ where: { id, deletedAt: null } }))) {
       throw new NotFoundException('Utilisateur introuvable');

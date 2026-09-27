@@ -68,9 +68,12 @@ export class AgentToolsService {
     };
   }
 
-  async searchContracts(args?: { query?: string; establishmentName?: string; status?: string; limit?: number }) {
+  async searchContracts(args?: { query?: string; establishmentName?: string; governorate?: string; status?: string; limit?: number }) {
     const where: any = { deletedAt: null };
     if (args?.status) where.status = args.status.toUpperCase();
+    if (args?.governorate) {
+      where.establishment = { governorate: args.governorate.toUpperCase() };
+    }
 
     let establishmentIds: string[] | undefined;
     if (args?.establishmentName) {
@@ -116,7 +119,7 @@ export class AgentToolsService {
         status: true,
         startDate: true,
         endDate: true,
-        establishment: { select: { businessName: true } },
+        establishment: { select: { businessName: true, governorate: true } },
       },
       orderBy: { endDate: 'asc' },
       take: args?.limit ? Math.min(args.limit, 50) : 20,
@@ -131,8 +134,44 @@ export class AgentToolsService {
         startDate: c.startDate?.toISOString().split('T')[0],
         endDate: c.endDate?.toISOString().split('T')[0],
         establishment: c.establishment?.businessName || 'Inconnu',
+        governorate: c.establishment?.governorate || null,
       })),
     };
+  }
+
+  async searchVehicles(args?: { query?: string; makeOrModel?: string; registration?: string; contractNumber?: string; governorate?: string; limit?: number }) {
+    const where: any = { deletedAt: null };
+    if (args?.registration) where.registrationNumber = { contains: args.registration.replace(/\s+/g, ''), mode: 'insensitive' };
+    if (args?.makeOrModel) {
+      where.OR = [
+        { make: { contains: args.makeOrModel, mode: 'insensitive' } },
+        { model: { contains: args.makeOrModel, mode: 'insensitive' } },
+      ];
+    } else if (args?.query) {
+      where.OR = [
+        { make: { contains: args.query, mode: 'insensitive' } },
+        { model: { contains: args.query, mode: 'insensitive' } },
+        { registrationNumber: { contains: args.query.replace(/\s+/g, ''), mode: 'insensitive' } },
+        { chassisNumber: { contains: args.query.replace(/\s+/g, ''), mode: 'insensitive' } },
+      ];
+    }
+    if (args?.contractNumber || args?.governorate) {
+      where.contract = {
+        deletedAt: null,
+        ...(args.contractNumber ? { number: { contains: args.contractNumber, mode: 'insensitive' } } : {}),
+        ...(args.governorate ? { establishment: { governorate: args.governorate.toUpperCase() } } : {}),
+      };
+    }
+    const vehicles = await this.prisma.vehicle.findMany({
+      where,
+      select: {
+        registrationNumber: true, make: true, model: true, year: true, type: true,
+        contract: { select: { number: true, establishment: { select: { businessName: true, governorate: true } } } },
+      },
+      orderBy: { registrationNumber: 'asc' },
+      take: args?.limit ? Math.min(args.limit, 50) : 20,
+    });
+    return { count: vehicles.length, vehicles };
   }
 
   // ===================== LECTURE DÉTAILLÉE =====================

@@ -30,6 +30,7 @@ export default function UsersPage() {
   const [editForm, setEditForm] = useState({ firstName: '', lastName: '', role: 'VIEWER' as Role, status: 'ACTIVE' });
   const [editError, setEditError] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const openEdit = useCallback((user: User) => {
     setEditingUser(user);
@@ -64,10 +65,23 @@ export default function UsersPage() {
   };
 
   const remove = useCallback(
-    async (id: string) => {
-      if (confirm('Desactiver cet utilisateur ?')) {
-        await api.delete(`/users/${id}`);
+    async (user: User) => {
+      const permanent = user.status === 'INACTIVE';
+      const confirmation = permanent
+        ? `ATTENTION : supprimer DEFINITIVEMENT le compte de ${user.firstName} ${user.lastName} (${user.email}) ? Cette action est irreversible.`
+        : `Desactiver le compte de ${user.firstName} ${user.lastName} (${user.email}) ? Il restera visible dans la liste.`;
+      if (!confirm(confirmation)) return;
+
+      setDeleteError(null);
+      try {
+        await api.delete(permanent ? `/users/${user.id}/permanent` : `/users/${user.id}`);
         await list.reload();
+      } catch (err) {
+        const message =
+          err && typeof err === 'object' && 'response' in err
+            ? (err.response as { data?: { message?: string | string[] } })?.data?.message
+            : undefined;
+        setDeleteError(Array.isArray(message) ? message.join(', ') : message || `Une erreur est survenue lors de ${permanent ? 'la suppression definitive' : 'la desactivation'}.`);
       }
     },
     [list],
@@ -107,8 +121,9 @@ export default function UsersPage() {
             {canDelete && (
               <button
                 className="icon-btn text-red-600 hover:bg-red-50"
-                title="Desactiver"
-                onClick={() => remove(row.original.id)}
+                title={row.original.status === 'INACTIVE' ? 'Supprimer definitivement' : 'Desactiver'}
+                aria-label={row.original.status === 'INACTIVE' ? 'Supprimer definitivement' : 'Desactiver'}
+                onClick={() => remove(row.original)}
               >
                 <Trash2 size={16} />
               </button>
@@ -126,6 +141,7 @@ export default function UsersPage() {
         title="Utilisateurs"
         description="Comptes et niveaux d’acces"
       />
+      {deleteError && <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">{deleteError}</p>}
       <DataTable {...list} columns={columns} onSearch={list.setSearch} onPage={list.setPage} />
 
       {/* Edit user modal */}

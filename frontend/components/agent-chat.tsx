@@ -18,16 +18,21 @@ import {
   Settings,
   Sparkles,
   Trash2,
+  UserPlus,
   Volume2,
   VolumeX,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { BrandLogo } from '@/components/brand-logo';
+import { useAuth } from '@/hooks/use-auth';
 import { useSpeech } from '@/hooks/use-speech';
 import { api } from '@/lib/api';
 
-const WELCOME_MESSAGE =
-  "Bonjour ! Je peux créer un compte employé pour vous. Donnez-moi l'email, le prénom, le nom et le rôle (MANAGER ou VIEWER).";
+function welcomeMessage(role?: string) {
+  if (role === 'ADMIN') return 'Bonjour ! Je peux gérer les utilisateurs et vous assister sur les établissements, contrats et véhicules.';
+  if (role === 'MANAGER') return 'Bonjour ! Je peux vous aider à consulter et gérer les établissements, contrats et véhicules. La gestion des utilisateurs reste réservée aux administrateurs.';
+  return 'Bonjour ! Je peux rechercher et consulter les établissements, contrats et véhicules. Votre accès est en lecture seule.';
+}
 
 type ChatMessage = {
   role: 'user' | 'agent';
@@ -75,10 +80,24 @@ function getDateGroup(timestamp: number): string {
   return date.toLocaleDateString('fr-TN', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-const CHAT_SUGGESTIONS = [
+const MANAGER_SUGGESTIONS = [
   { label: 'Créer un établissement', icon: Building2 },
   { label: 'Créer un contrat', icon: FileText },
   { label: 'Rechercher', icon: Search },
+  { label: 'Aide', icon: CircleHelp },
+];
+
+const ADMIN_SUGGESTIONS = [
+  { label: 'Créer un utilisateur', icon: UserPlus },
+  { label: 'Créer un établissement', icon: Building2 },
+  { label: 'Créer un contrat', icon: FileText },
+  { label: 'Rechercher', icon: Search },
+];
+
+const VIEWER_SUGGESTIONS = [
+  { label: 'Rechercher un établissement', icon: Building2 },
+  { label: 'Consulter un contrat', icon: FileText },
+  { label: 'Rechercher un véhicule', icon: Search },
   { label: 'Aide', icon: CircleHelp },
 ];
 
@@ -110,6 +129,7 @@ function conversationTitle(messages: ChatMessage[]): string {
 }
 
 export function AgentChat({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -170,9 +190,13 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => {
     if (open && !chatInitializedRef.current) {
       chatInitializedRef.current = true;
-      startNewConversation();
+      const id = generateSessionId();
+      setCurrentSessionId(id);
+      setMessages([{ role: 'agent', content: welcomeMessage(user?.role), createdAt: Date.now() }]);
+      setChatInput('');
+      setHistoryOpen(false);
     }
-  }, [open]);
+  }, [open, user?.role]);
 
   useEffect(() => {
     if (!currentSessionId || !currentUserId) return;
@@ -199,7 +223,7 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
   const startNewConversation = () => {
     const id = generateSessionId();
     setCurrentSessionId(id);
-    setMessages([{ role: 'agent', content: WELCOME_MESSAGE, createdAt: Date.now() }]);
+    setMessages([{ role: 'agent', content: welcomeMessage(user?.role), createdAt: Date.now() }]);
     setChatInput('');
     setHistoryOpen(false);
   };
@@ -407,7 +431,7 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
             </div>
             <div className="sticky bottom-0 mt-10 bg-[#fcfcfb] pb-4 pt-5">
               <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-                {CHAT_SUGGESTIONS.map(({ label, icon: Icon }) => (
+                {(user?.role === 'ADMIN' ? ADMIN_SUGGESTIONS : user?.role === 'VIEWER' ? VIEWER_SUGGESTIONS : MANAGER_SUGGESTIONS).map(({ label, icon: Icon }) => (
                   <button
                     key={label}
                     type="button"

@@ -6,12 +6,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/current-user.decorator';
 import { Permission } from '../common/permissions';
 import { Permissions } from '../common/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions.guard';
 import { CreateVehicleDto, UpdateVehicleDto, VehicleQueryDto } from './vehicles.dto';
 import { VehiclesService } from './vehicles.service';
 
 @ApiTags('Vehicules')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('vehicles')
 export class VehiclesController {
   constructor(private readonly service: VehiclesService) {}

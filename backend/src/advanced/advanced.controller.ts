@@ -5,11 +5,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/current-user.decorator';
 import { Permission } from '../common/permissions';
 import { Permissions } from '../common/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions.guard';
 import { AdvancedService } from './advanced.service';
 
 @ApiTags('Fonctionnalites avancees')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller()
 export class AdvancedController {
   constructor(private readonly service: AdvancedService) {}

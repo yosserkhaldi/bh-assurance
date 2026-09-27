@@ -6,12 +6,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/current-user.decorator';
 import { Permission } from '../common/permissions';
 import { Permissions } from '../common/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions.guard';
 import { DocumentQueryDto, GenerateDocumentDto } from './documents.dto';
 import { DocumentsService } from './documents.service';
 
 @ApiTags('Documents')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('documents')
 export class DocumentsController {
   constructor(private readonly service: DocumentsService) {}
